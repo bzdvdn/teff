@@ -2,7 +2,7 @@
 
 What actually happens between `graph.run(...)` and the result you get back?
 Everything below is real output from
-[`examples/hello_workflow/`](../../examples/hello_workflow/) — a run with no
+[`examples/hello_workflow/`](https://github.com/bzdvdn/teff/tree/main/examples/hello_workflow/) — a run with no
 LLM, so you can replay it locally in seconds.
 
 ## 1. The CLI trace
@@ -116,5 +116,5 @@ and a fresh interrupt surfaces as an `interrupt` event instead of a raise.
   [observability dashboard](../guide/observability.md).
 - Make runs durable: [durable](../guide/durable.md).
 - See the whole lifecycle in action with human-in-the-loop:
-  [`examples/human_in_loop/`](../../examples/human_in_loop/) and the
-  runnable [`support_triage`](../../examples/recipes/support_triage/).
+  [`examples/human_in_loop/`](https://github.com/bzdvdn/teff/tree/main/examples/human_in_loop/) and the
+  runnable [`support_triage`](https://github.com/bzdvdn/teff/tree/main/examples/recipes/support_triage/).

@@ -64,6 +64,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Why Teff: why-teff.md
   - Getting started:
       - Install: getting-started/install.md
       - Learning path: getting-started/learning-path.md
@@ -103,6 +104,7 @@ nav:
       - KB assistant: recipes/kb-assistant.md
       - Invoice processing: recipes/invoice-processing.md
       - Ops daemon: recipes/ops-daemon.md
+      - FastAPI agent in 10 minutes: recipes/fastapi-agent.md
   - Reference:
       - Overview: reference.md
       - Nodes: reference/nodes.md

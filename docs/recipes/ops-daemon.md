@@ -6,7 +6,7 @@
 > in redis, waits for a maintenance window, and sends a single summary.
 > Entirely `workflow.yaml` — no per-app Python.
 
-Runnable: [`examples/applications/repo-health/`](../../examples/applications/repo-health/)
+Runnable: [`examples/applications/repo-health/`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repo-health/)
 
 ## 1. The business problem
 

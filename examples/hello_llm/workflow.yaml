@@ -1,0 +1,37 @@
+name: hello-llm
+description: >
+  A minimal LLM workflow you can run straight from the CLI — no Python
+  needed.  Calls Ollama (llama3.1:8b), then uppercases the answer with a
+  plain transform.  Run it twice with a checkpointer and the second run
+  resumes from the last safe checkpoint instead of starting over.
+
+state:
+  initial:
+    topic: "Rocket engineering"
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
+steps:
+  - id: greet
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: "You are a helpful assistant. Reply with one short sentence."
+      prompt: "Say hello to a {topic} engineer."
+      output_key: greeting
+
+  - id: shout
+    type: transform
+    config:
+      action: uppercase
+      input_key: greeting
+      output_key: loud
+
+edges:
+  - from: greet
+    to: shout

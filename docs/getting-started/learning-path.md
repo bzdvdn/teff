@@ -25,10 +25,10 @@ is declared; how to launch it from YAML and from Python.
 The core idea: **workflow as data**. Topology lives in YAML (or the Flow DSL),
 not in prompts or node bodies.
 
-- [basic_pipeline](../../examples/basic_pipeline/) — minimal YAML pipeline.
-- [branching](../../examples/branching/) — conditional edges + Flow API.
-- [parallel](../../examples/parallel/) — concurrent branches + typed `State`.
-- [map_repair_plans](../../examples/map_repair_plans/) — dynamic fan-out
+- [basic_pipeline](https://github.com/bzdvdn/teff/tree/main/examples/basic_pipeline/) — minimal YAML pipeline.
+- [branching](https://github.com/bzdvdn/teff/tree/main/examples/branching/) — conditional edges + Flow API.
+- [parallel](https://github.com/bzdvdn/teff/tree/main/examples/parallel/) — concurrent branches + typed `State`.
+- [map_repair_plans](https://github.com/bzdvdn/teff/tree/main/examples/map_repair_plans/) — dynamic fan-out
   (`Map`) + `{key}` prompt templates.
 - Guides: [YAML workflows](../guide/yaml-workflows.md),
   [Flow builder](../guide/flow-builder.md), [State](../guide/state.md),
@@ -43,14 +43,14 @@ Flow DSL, how reducers merge branch results, and how `Map` differs from
 Teff's differentiator: a run is **checkpointable and resumable**, and it can
 **pause for approval**.
 
-- [checkpoint_resume](../../examples/checkpoint_resume/) — crash/resume in a
+- [checkpoint_resume](https://github.com/bzdvdn/teff/tree/main/examples/checkpoint_resume/) — crash/resume in a
   few lines.
-- [checkpoint_stores](../../examples/checkpoint_stores/) — file / SQLite / PG.
-- [human_in_loop](../../examples/human_in_loop/) — `Interrupt` + `loop()` +
+- [checkpoint_stores](https://github.com/bzdvdn/teff/tree/main/examples/checkpoint_stores/) — file / SQLite / PG.
+- [human_in_loop](https://github.com/bzdvdn/teff/tree/main/examples/human_in_loop/) — `Interrupt` + `loop()` +
   resume (Python and YAML).
-- [ask_strategies](../../examples/ask_strategies/) — validate interrupt
+- [ask_strategies](https://github.com/bzdvdn/teff/tree/main/examples/ask_strategies/) — validate interrupt
   answers (`Ask`: regex, equals, LLM classifier) — offline.
-- [agent_approval](../../examples/agent_approval/) — every tool call pauses
+- [agent_approval](https://github.com/bzdvdn/teff/tree/main/examples/agent_approval/) — every tool call pauses
   for human sign-off.
 - Guide: [Durable (checkpoints)](../guide/durable.md).
 
@@ -62,14 +62,14 @@ durable.
 
 Composition: agent loops, tool calling, skills, and MCP.
 
-- [react_agent](../../examples/react_agent/) — ReAct loop + calculator tool +
+- [react_agent](https://github.com/bzdvdn/teff/tree/main/examples/react_agent/) — ReAct loop + calculator tool +
   streaming.
-- [harness_agent](../../examples/harness_agent/) — parallel tool calls in one
+- [harness_agent](https://github.com/bzdvdn/teff/tree/main/examples/harness_agent/) — parallel tool calls in one
   round + `__error__` fallback.
-- [skills](../../examples/skills/) and
-  [pdf_agent](../../examples/pdf_agent/) — `SKILL.md` folders and vendored
+- [skills](https://github.com/bzdvdn/teff/tree/main/examples/skills/) and
+  [pdf_agent](https://github.com/bzdvdn/teff/tree/main/examples/pdf_agent/) — `SKILL.md` folders and vendored
   tool-bundling skills.
-- [mcp](../../examples/mcp/) — call tools from an MCP server (stdio).
+- [mcp](https://github.com/bzdvdn/teff/tree/main/examples/mcp/) — call tools from an MCP server (stdio).
 - Guides: [Agents](../guide/agents.md), [Skills](../guide/skills.md),
   [Plugins](../guide/plugins.md), [Tools](../reference/tools.md).
 
@@ -80,12 +80,12 @@ node types, how skills scope tools, and how to bridge MCP servers.
 
 Grounded answers and long-term state.
 
-- [rag_search](../../examples/rag_search/) — RAG over a local CSV,
+- [rag_search](https://github.com/bzdvdn/teff/tree/main/examples/rag_search/) — RAG over a local CSV,
   in-memory store.
-- [rag_stores](../../examples/rag_stores/) — the same RAG agent on every
+- [rag_stores](https://github.com/bzdvdn/teff/tree/main/examples/rag_stores/) — the same RAG agent on every
   vector store.
-- [memory_assistant](../../examples/memory_assistant/) and
-  [memory_chat](../../examples/memory_chat/) — long-term memory.
+- [memory_assistant](https://github.com/bzdvdn/teff/tree/main/examples/memory_assistant/) and
+  [memory_chat](https://github.com/bzdvdn/teff/tree/main/examples/memory_chat/) — long-term memory.
 - Guides: [RAG](../guide/rag.md), [Long-term memory](../guide/memory.md).
 
 *You should know:* how to pick a vector store, how the RAG tool is wired,
@@ -95,15 +95,15 @@ and when memory vs RAG is the right answer.
 
 Validation, resilience, observability, testing, evaluation.
 
-- [streaming](../../examples/streaming/) and
-  [structured_output](../../examples/structured_output/) — live events and
+- [streaming](https://github.com/bzdvdn/teff/tree/main/examples/streaming/) and
+  [structured_output](https://github.com/bzdvdn/teff/tree/main/examples/structured_output/) — live events and
   schema-validated JSON.
-- [self_refine](../../examples/self_refine/),
-  [plan_and_execute](../../examples/plan_and_execute/),
-  [deep_research](../../examples/deep_research/) — multi-step agent patterns
+- [self_refine](https://github.com/bzdvdn/teff/tree/main/examples/self_refine/),
+  [plan_and_execute](https://github.com/bzdvdn/teff/tree/main/examples/plan_and_execute/),
+  [deep_research](https://github.com/bzdvdn/teff/tree/main/examples/deep_research/) — multi-step agent patterns
   (mocked, no API key).
-- [time_travel](../../examples/time_travel/) — rewind / edit / replay a run.
-- [release_features](../../examples/release_features/) — validation, typed
+- [time_travel](https://github.com/bzdvdn/teff/tree/main/examples/time_travel/) — rewind / edit / replay a run.
+- [release_features](https://github.com/bzdvdn/teff/tree/main/examples/release_features/) — validation, typed
   errors, `teff eval`, cost reports, response cache.
 - Guides: [Testing](../guide/testing.md), [Evaluation](../guide/evaluation.md),
   [Observability](../guide/observability.md), [Logging](../guide/logging.md),
@@ -116,15 +116,15 @@ on `teff eval`, how to read the trace dashboard, and how to budget tokens.
 
 Real, closed, production-shaped apps to copy.
 
-- [repair-ai-chat](../../examples/applications/repair-ai-chat/) — FastAPI app:
+- [repair-ai-chat](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/) — FastAPI app:
   `route()` supervisor, five agents, tools, RAG, streaming.
-- [service_desk](../../examples/applications/service_desk/) — FastAPI +
+- [service_desk](https://github.com/bzdvdn/teff/tree/main/examples/applications/service_desk/) — FastAPI +
   RAG + run management.
-- [fraud_gate](../../examples/applications/fraud_gate/) — review/publish flow
+- [fraud_gate](https://github.com/bzdvdn/teff/tree/main/examples/applications/fraud_gate/) — review/publish flow
   with HITL and durable checkpoints.
-- [repo-health](../../examples/applications/repo-health/),
-  [github-reviewer](../../examples/applications/github-reviewer/),
-  [gitlab-reviewer](../../examples/applications/gitlab-reviewer/) — CI-adjacent
+- [repo-health](https://github.com/bzdvdn/teff/tree/main/examples/applications/repo-health/),
+  [github-reviewer](https://github.com/bzdvdn/teff/tree/main/examples/applications/github-reviewer/),
+  [gitlab-reviewer](https://github.com/bzdvdn/teff/tree/main/examples/applications/gitlab-reviewer/) — CI-adjacent
   automations.
 - Scaffolding: `teff new` (fastapi/cli/daemon variants).
 
@@ -143,25 +143,25 @@ Not sure which example matches your need? Start here.
 
 | I want to…                                        | Read / run                                                |
 | ------------------------------------------------- | --------------------------------------------------------- |
-| Write my first workflow                            | [quickstart](quickstart.md), [basic_pipeline](../../examples/basic_pipeline/) |
-| Branch on a condition                              | [branching](../../examples/branching/)                    |
-| Run steps in parallel                              | [parallel](../../examples/parallel/)                      |
-| Fan out over a list of inputs                      | [map_repair_plans](../../examples/map_repair_plans/)      |
-| Survive crashes / resume a run                     | [checkpoint_resume](../../examples/checkpoint_resume/), [durable](../guide/durable.md) |
-| Add human approval                                | [human_in_loop](../../examples/human_in_loop/), [agent_approval](../../examples/agent_approval/) |
-| Build an agent that uses tools                     | [react_agent](../../examples/react_agent/), [agents](../guide/agents.md) |
-| Run several tool calls at once                     | [harness_agent](../../examples/harness_agent/)            |
-| Give an agent a skill / a bundle of tools          | [skills](../../examples/skills/), [pdf_agent](../../examples/pdf_agent/) |
-| Call tools from an MCP server                      | [mcp](../../examples/mcp/)                               |
-| Answer from my own documents                       | [rag_search](../../examples/rag_search/), [rag](../guide/rag.md) |
-| Keep long-term user context                        | [memory_assistant](../../examples/memory_assistant/), [memory](../guide/memory.md) |
-| Stream tokens to the UI                            | [streaming](../../examples/streaming/)                   |
-| Force valid JSON output                            | [structured_output](../../examples/structured_output/)   |
-| Route between multiple agents                      | [simple_router](../../examples/simple_router/), [supervisors](../guide/supervisors.md) |
-| Test without the LLM                               | [testing](../guide/testing.md), [simple_router](../../examples/simple_router/) |
-| Evaluate / gate a release                          | [release_features](../../examples/release_features/), [evaluation](../guide/evaluation.md) |
-| Debug a run after the fact                         | [observability](../guide/observability.md), [time_travel](../../examples/time_travel/) |
-| Ship a FastAPI app                                 | [repair-ai-chat](../../examples/applications/repair-ai-chat/), `teff new fastapi` |
+| Write my first workflow                            | [quickstart](quickstart.md), [basic_pipeline](https://github.com/bzdvdn/teff/tree/main/examples/basic_pipeline/) |
+| Branch on a condition                              | [branching](https://github.com/bzdvdn/teff/tree/main/examples/branching/)                    |
+| Run steps in parallel                              | [parallel](https://github.com/bzdvdn/teff/tree/main/examples/parallel/)                      |
+| Fan out over a list of inputs                      | [map_repair_plans](https://github.com/bzdvdn/teff/tree/main/examples/map_repair_plans/)      |
+| Survive crashes / resume a run                     | [checkpoint_resume](https://github.com/bzdvdn/teff/tree/main/examples/checkpoint_resume/), [durable](../guide/durable.md) |
+| Add human approval                                | [human_in_loop](https://github.com/bzdvdn/teff/tree/main/examples/human_in_loop/), [agent_approval](https://github.com/bzdvdn/teff/tree/main/examples/agent_approval/) |
+| Build an agent that uses tools                     | [react_agent](https://github.com/bzdvdn/teff/tree/main/examples/react_agent/), [agents](../guide/agents.md) |
+| Run several tool calls at once                     | [harness_agent](https://github.com/bzdvdn/teff/tree/main/examples/harness_agent/)            |
+| Give an agent a skill / a bundle of tools          | [skills](https://github.com/bzdvdn/teff/tree/main/examples/skills/), [pdf_agent](https://github.com/bzdvdn/teff/tree/main/examples/pdf_agent/) |
+| Call tools from an MCP server                      | [mcp](https://github.com/bzdvdn/teff/tree/main/examples/mcp/)                               |
+| Answer from my own documents                       | [rag_search](https://github.com/bzdvdn/teff/tree/main/examples/rag_search/), [rag](../guide/rag.md) |
+| Keep long-term user context                        | [memory_assistant](https://github.com/bzdvdn/teff/tree/main/examples/memory_assistant/), [memory](../guide/memory.md) |
+| Stream tokens to the UI                            | [streaming](https://github.com/bzdvdn/teff/tree/main/examples/streaming/)                   |
+| Force valid JSON output                            | [structured_output](https://github.com/bzdvdn/teff/tree/main/examples/structured_output/)   |
+| Route between multiple agents                      | [simple_router](https://github.com/bzdvdn/teff/tree/main/examples/simple_router/), [supervisors](../guide/supervisors.md) |
+| Test without the LLM                               | [testing](../guide/testing.md), [simple_router](https://github.com/bzdvdn/teff/tree/main/examples/simple_router/) |
+| Evaluate / gate a release                          | [release_features](https://github.com/bzdvdn/teff/tree/main/examples/release_features/), [evaluation](../guide/evaluation.md) |
+| Debug a run after the fact                         | [observability](../guide/observability.md), [time_travel](https://github.com/bzdvdn/teff/tree/main/examples/time_travel/) |
+| Ship a FastAPI app                                 | [repair-ai-chat](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/), `teff new fastapi` |
 
 Before you add a new example, re-check this list — the pattern you need is
 probably already documented.

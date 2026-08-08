@@ -1,0 +1,149 @@
+name: poem_chat
+description: >-
+  A terminal chat where an LLM writes a poem about the topic you ask, a second
+  agent (a strict critic) reviews it, and then the workflow PAUSES to ask if
+  you like it. Your free-form answer is understood by a small classifier LLM —
+  "yes", "sure", "not bad" approve, "no, rewrite" restarts the loop. No
+  hard-coded keywords, no static if/else: the shape of the run is data.
+
+  Try it:
+
+      teff chat examples/poem_chat/workflow.yaml
+      # you:             "write a poem about autumn"
+      # bot (pauses):    Do you like it? Say what you think (yes / no / shorter)…
+      # you:             "make it shorter"
+      # you:             "yes, perfect"
+
+state:
+  initial:
+    messages: []
+    poem: ""
+    critic: {}
+    critic_note: ""
+    decision: ""
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
+checkpoint:
+  type: file
+  path: data/checkpoints
+
+steps:
+  - id: compose
+    type: context_builder
+    config:
+      messages_key: messages
+      sections:
+        poem: "Current poem"
+        critic_note: "Critic feedback"
+        answer: "New user feedback"
+      output_key: topic
+      reset_keys: [poem, critic_note, answer]
+
+  - id: poet
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are an outstanding poet. Below is the topic and, if present,
+        feedback — take it into account and rewrite the poem accordingly.
+        Reply with ONLY the poem text, no explanations, no headings.
+      prompt: "{topic}"
+      output_key: poem
+
+  - id: critic
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a demanding poetry critic. Judge the poem: rhyme, rhythm,
+        imagery. Reply with a single JSON object with fields "verdict" and
+        "note": "verdict" is "ok" or "fix"; "note" is one-two short sentences
+        telling the poet what to improve (or an empty string when it is ok).
+      prompt: |-
+        Poem:
+        {poem}
+
+        Reply with JSON.
+      output_key: critic
+      parse: true
+
+  - id: take_note
+    type: transform
+    config:
+      action: json_get
+      input_key: critic
+      field: note
+      output_key: critic_note
+
+  - id: show
+    type: append_assistant
+    config:
+      output_key: poem
+      messages_key: messages
+
+  - id: approval
+    type: interrupt
+    config:
+      key: answer
+      prompt: >-
+        Here is the poem:
+
+        {poem}
+
+        ---
+
+        Do you like it? Say what you think (yes / of course / make it shorter
+        / no)…
+      strategy:
+        llm:
+          system: >-
+            Classify how the user feels about the poem they were just shown.
+            Return one JSON object with a boolean "ok" field.
+            ok=true means the user accepts the poem. Examples of acceptance:
+            "yes", "sure", "perfect", "nice", "not bad", "keep it".
+            ok=false means they want changes or a rewrite. Examples of
+            rejection: "no", "rewrite", "shorter", "change it", "the other",
+            "I don't like it".
+            When in doubt, prefer ok=true for mildly positive or ambiguous
+            replies and ok=false only when a change is clearly requested.
+          user: 'The user said: "{answer}". The poem: {poem}'
+          model: qwen2.5:7b
+          provider: ollama
+          schema:
+            type: object
+            properties:
+              ok: {type: boolean}
+            required: [ok]
+        decision_key: decision
+        pass_value: keep
+        fail_value: rewrite
+
+  - id: route
+    type: command
+    config:
+      routes:
+        - {when: "decision=keep", goto: done}
+        - {when: "decision=rewrite", goto: compose}
+      goto: approval
+
+  - id: done
+    type: transform
+    config:
+      action: value
+      value: "Poem done — hope you like it!"
+      output_key: done
+
+edges:
+  - {from: compose, to: poet}
+  - {from: poet, to: critic}
+  - {from: critic, to: take_note}
+  - {from: take_note, to: show}
+  - {from: show, to: approval}
+  - {from: approval, to: route}

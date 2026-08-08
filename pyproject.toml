@@ -5,7 +5,7 @@ description = "Workflow as data. Agents as graphs."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-keywords = ["ai", "agents", "workflow", "llm", "graph", "orchestration", "rag"]
+keywords = ["ai", "agents", "workflow", "llm", "graph", "orchestration", "rag", "durable", "yaml", "checkpoint", "human-in-the-loop", "async"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -28,7 +28,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://bzdvdn.github.io/teff/"
 Documentation = "https://bzdvdn.github.io/teff/"
+Repository = "https://github.com/bzdvdn/teff"
 Changelog = "https://github.com/bzdvdn/teff/blob/main/CHANGELOG.md"
+"Release notes" = "https://github.com/bzdvdn/teff/releases"
 Source = "https://github.com/bzdvdn/teff"
 Issues = "https://github.com/bzdvdn/teff/issues"
 

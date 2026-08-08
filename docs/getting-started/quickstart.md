@@ -1,5 +1,9 @@
 # Quick start
 
+> New here? **[From zero to a FastAPI agent in 10 minutes](../recipes/fastapi-agent.md)**
+> is the fastest on-ramp. For a 5-minute feel of the core ideas without any
+> LLM, read the [tutorial](tutorial.md) instead.
+
 ## YAML workflow
 
 Workflows are **data**. The canonical form is YAML — no code required to

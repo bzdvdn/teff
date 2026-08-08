@@ -3,7 +3,7 @@
 This walks you through writing, running, and reading a real workflow. We use a
 **deterministic** example — no LLM, no network, no API key — so you can run it
 the moment `teff` is installed. Everything here lives, runnable, in
-[`examples/hello_workflow/`](../../examples/hello_workflow/).
+[`examples/hello_workflow/`](https://github.com/bzdvdn/teff/tree/main/examples/hello_workflow/).
 
 ---
 
@@ -149,6 +149,6 @@ Now swap the `Transform` count/`value` nodes for real work:
 Easiest next step: open
 [`choosing-your-abstraction`](../guide/choosing-your-abstraction.md) to pick
 when each view is right, then build the runnable
-[`support_triage`](../../examples/recipes/support_triage/) example (supervisor
+[`support_triage`](https://github.com/bzdvdn/teff/tree/main/examples/recipes/support_triage/) example (supervisor
 + human-in-the-loop + checkpoints), which uses this same branch-and-converge
 shape under the hood.

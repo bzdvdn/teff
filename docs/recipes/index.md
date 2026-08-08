@@ -18,12 +18,13 @@ reading abstract code.
 
 | Recipe | Business case | Runnable example | Core pattern |
 | ------ | ------------- | ---------------- | ------------ |
-| [Fraud review](fraud-review.md) | Payment screening | [`fraud_gate`](../../examples/applications/fraud_gate/) | Dynamic `Command` routing + HITL + durable resume |
-| [Release approval](release-approval.md) | Ship-gate with human sign-off | [`release_coordinator`](../../examples/release_coordinator/) | Supervisor + `route()` + `Map` + approval gate |
-| [Support triage](support-triage.md) | Customer-support SLA hub | [`simple_router`](../../examples/simple_router/) + [`repair-ai-chat`](../../examples/applications/repair-ai-chat/) | `route()` supervisor + RAG + HITL escalation |
-| [Ops daemon](ops-daemon.md) | Scheduled change-triage | [`repo-health`](../../examples/applications/repo-health/) | YAML-only agent-driven tick via CLI daemon |
-| [KB assistant](kb-assistant.md) | Grounded self-service Q&A | [`rag_search`](../../examples/rag_search/) + [`repair-ai-chat`](../../examples/applications/repair-ai-chat/) | RAG retrieval + confidence gate + human fallback |
-| [Invoice processing](invoice-processing.md) | AP automation with approval | [`structured_output`](../../examples/structured_output/) + [`agent_approval`](../../examples/agent_approval/) | `Extract`/`Fallback` + `Validate` + durable approval |
+| [FastAPI agent in 10 minutes](fastapi-agent.md) | Durable AI agent over HTTP | [`fastapi_server`](https://github.com/bzdvdn/teff/tree/main/examples/fastapi_server/) + [`teff/scaffold/fastapi`](https://github.com/bzdvdn/teff/tree/main/teff/scaffold/fastapi/) | `Flow.react()` + checkpointer + SSE streaming — the zero-to-30s on-ramp |
+| [Fraud review](fraud-review.md) | Payment screening | [`fraud_gate`](https://github.com/bzdvdn/teff/tree/main/examples/applications/fraud_gate/) | Dynamic `Command` routing + HITL + durable resume |
+| [Release approval](release-approval.md) | Ship-gate with human sign-off | [`release_coordinator`](https://github.com/bzdvdn/teff/tree/main/examples/release_coordinator/) | Supervisor + `route()` + `Map` + approval gate |
+| [Support triage](support-triage.md) | Customer-support SLA hub | [`simple_router`](https://github.com/bzdvdn/teff/tree/main/examples/simple_router/) + [`repair-ai-chat`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/) | `route()` supervisor + RAG + HITL escalation |
+| [Ops daemon](ops-daemon.md) | Scheduled change-triage | [`repo-health`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repo-health/) | YAML-only agent-driven tick via CLI daemon |
+| [KB assistant](kb-assistant.md) | Grounded self-service Q&A | [`rag_search`](https://github.com/bzdvdn/teff/tree/main/examples/rag_search/) + [`repair-ai-chat`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/) | RAG retrieval + confidence gate + human fallback |
+| [Invoice processing](invoice-processing.md) | AP automation with approval | [`structured_output`](https://github.com/bzdvdn/teff/tree/main/examples/structured_output/) + [`agent_approval`](https://github.com/bzdvdn/teff/tree/main/examples/agent_approval/) | `Extract`/`Fallback` + `Validate` + durable approval |
 
 ## Reading the pattern
 

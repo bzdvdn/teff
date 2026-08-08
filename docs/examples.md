@@ -17,6 +17,8 @@ README for exact commands.
 | [memory_chat](https://github.com/bzdvdn/teff/tree/main/examples/memory_chat/) | Multi-user streaming chat — owner picked at the console, per-owner memory (`${owner}`), live tokens, auto fact extraction |
 | [harness_agent](https://github.com/bzdvdn/teff/tree/main/examples/harness_agent/) | `flow.harness()` — parallel tool calls in one round + `__error__` fallback |
 | [hello_workflow](https://github.com/bzdvdn/teff/tree/main/examples/hello_workflow/) | The same deterministic workflow at three levels — YAML, Flow DSL, low-level graph; no API key, CLI-runnable |
+| [hello_llm](https://github.com/bzdvdn/teff/tree/main/examples/hello_llm/) | Minimal LLM workflow (`llm_chat` + `transform`) — CLI-runnable with durable SQLite checkpoints |
+| [poem_chat](https://github.com/bzdvdn/teff/tree/main/examples/poem_chat/) | Two-agent poem chat with human approval — `context_builder` → `llm_chat` poet → critic → `interrupt`; the approval answer is classified by a small LLM (no hard-coded keywords) and a failed approval loops the poem back for a rewrite (`teff chat`) |
 | [agent_approval](https://github.com/bzdvdn/teff/tree/main/examples/agent_approval/) | Tool approval (HITL) — every tool call pauses for human sign-off and resumes |
 | [agent_resilience](https://github.com/bzdvdn/teff/tree/main/examples/agent_resilience/) | Retries, model failover, context trimming and a token budget (mocked, no API key) |
 | [skills](https://github.com/bzdvdn/teff/tree/main/examples/skills/) | Skills folder (`SKILL.md`) — instructions + tool scoping on a harness agent |

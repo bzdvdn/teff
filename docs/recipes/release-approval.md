@@ -5,7 +5,7 @@
 > crucially — **pauses for human approval inside the supervisor loop** so that
 > rejecting a release re-plans instead of ending.
 
-Runnable: [`examples/release_coordinator/`](../../examples/release_coordinator/)
+Runnable: [`examples/release_coordinator/`](https://github.com/bzdvdn/teff/tree/main/examples/release_coordinator/)
 
 ## 1. The business problem
 
@@ -28,7 +28,7 @@ neither end the graph silently nor hang it.
                                     └── нет ──► back to supervisor → planner (re-plan)
 ```
 
-Built with the Flow DSL ([`main.py`](../../examples/release_coordinator/main.py)):
+Built with the Flow DSL ([`main.py`](https://github.com/bzdvdn/teff/tree/main/examples/release_coordinator/main.py)):
 
 ```python
 flow.supervisor(
@@ -98,7 +98,7 @@ The supervisor policy is the risk: a free-form answer must be handled. Test:
   (`supervisor_rounds`).
 
 Follow the offline approach in
-[`examples/simple_router/`](../../examples/simple_router/) (canned transport +
+[`examples/simple_router/`](https://github.com/bzdvdn/teff/tree/main/examples/simple_router/) (canned transport +
 bounded-loop assertion) to verify wiring without an LLM.
 
 ## 6. Cost & observability

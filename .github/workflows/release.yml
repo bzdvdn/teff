@@ -10,6 +10,10 @@ permissions:
   id-token: write
   pages: write
 
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
 jobs:
   test:
     name: Tests

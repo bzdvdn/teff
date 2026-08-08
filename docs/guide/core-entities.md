@@ -162,6 +162,6 @@ See [providers](../reference/providers.md).
 - Map node types to jobs: [nodes reference](../reference/nodes.md) and
   [CLI cheat-sheet](../getting-started/cli-cheatsheet.md).
 - Build a real one end-to-end: [tutorial](../getting-started/tutorial.md) → the
-  runnable [hello_workflow](../../examples/hello_workflow/).
+  runnable [hello_workflow](https://github.com/bzdvdn/teff/tree/main/examples/hello_workflow/).
 - Add your own node/tool: [plugins](plugins.md).
 - Lifecycle of a run: [anatomy of a run](../getting-started/anatomy-of-a-run.md).
