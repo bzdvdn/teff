@@ -415,8 +415,9 @@ uv run mkdocs build              # build these docs
 
 ## Status
 
-**0.1.0** — first stable release. The public API, YAML surface and CLI are
-stable; breaking changes require a minor version bump.
+**0.1.1** — patch release (docs & package metadata). First stable release:
+0.1.0. The public API, YAML surface and CLI are stable; breaking changes
+require a minor version bump.
 
 Coming next: durable conversations with built-in memory, tighter tool
 ergonomics, and more vector stores + plugins. Want to shape the roadmap or
