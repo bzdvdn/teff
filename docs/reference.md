@@ -2,7 +2,7 @@
 
 ## Design principles
 
-See [`CONSTITUTION.md`](https://github.com/bzdvdn/teff/blob/main/CONSTITUTION.md)
+See [`CONSTITUTION.md`](https://github.com/bzdvdn/teff/blob/master/CONSTITUTION.md)
 for the framework's principles and non-negotiable rules — the short version:
 
 - **Workflow as data.** YAML/JSON are canonical; code is optional.

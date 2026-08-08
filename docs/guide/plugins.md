@@ -94,5 +94,5 @@ load_plugins(["nodes.py", "tools.py"])  # files
 load_plugins(["plugins"])  # folder
 ```
 
-See [`examples/plugins/`](https://github.com/bzdvdn/teff/tree/main/examples/plugins/) for a complete offline
+See [`examples/plugins/`](https://github.com/bzdvdn/teff/tree/master/examples/plugins/) for a complete offline
 pipeline (both styles) plus a ReAct agent that uses the custom tools.

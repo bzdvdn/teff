@@ -6,9 +6,9 @@
 > workflow.yaml required.
 
 Runnable end-state:
-[`examples/fastapi_server/`](https://github.com/bzdvdn/teff/tree/main/examples/fastapi_server/)
+[`examples/fastapi_server/`](https://github.com/bzdvdn/teff/tree/master/examples/fastapi_server/)
 and the productionised scaffold in
-[`teff/scaffold/fastapi/`](https://github.com/bzdvdn/teff/tree/main/teff/scaffold/fastapi/).
+[`teff/scaffold/fastapi/`](https://github.com/bzdvdn/teff/tree/master/teff/scaffold/fastapi/).
 
 ## 0. Install
 

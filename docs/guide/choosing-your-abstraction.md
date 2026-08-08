@@ -96,8 +96,8 @@ Rules:
 | **`Ask`** validation  | Validate the answer (regex/equals/LLM) before resuming | Bad input must be rejected/re-asked |
 
 Combine them: interrupt for *who decides*, `Ask` for *is the answer valid*.
-See [human_in_loop](https://github.com/bzdvdn/teff/tree/main/examples/human_in_loop/) and
-[ask_strategies](https://github.com/bzdvdn/teff/tree/main/examples/ask_strategies/).
+See [human_in_loop](https://github.com/bzdvdn/teff/tree/master/examples/human_in_loop/) and
+[ask_strategies](https://github.com/bzdvdn/teff/tree/master/examples/ask_strategies/).
 
 ## 6. Resilience
 
@@ -119,7 +119,7 @@ model failover at the provider level for *whole-model* issues.
 | `qdrant`/`milvus`/`weaviate`/`pinecone`/`pgvector` | Scale, teams, managed services |
 
 Pick the store, not the app: the RAG agent is identical across stores —
-see [rag_stores](https://github.com/bzdvdn/teff/tree/main/examples/rag_stores/).
+see [rag_stores](https://github.com/bzdvdn/teff/tree/master/examples/rag_stores/).
 
 ---
 

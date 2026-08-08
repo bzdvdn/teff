@@ -1,7 +1,7 @@
 # CLI cheat-sheet
 
 The `teff` CLI is how you drive a workflow without writing Python. All examples
-use the runnable [`examples/hello_workflow/`](https://github.com/bzdvdn/teff/tree/main/examples/hello_workflow/).
+use the runnable [`examples/hello_workflow/`](https://github.com/bzdvdn/teff/tree/master/examples/hello_workflow/).
 
 ## The five commands
 

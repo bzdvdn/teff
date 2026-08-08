@@ -103,11 +103,11 @@ into production systems.
 - **Multi-agent supervisor.** A `route()` supervisor picks an agent per round
   and loops until the work is done — planning, coding, QA and an approval
   gate, all durable. It is described as a plain flow and a team of sub-flows
-  ([`examples/supervisor_complex`](https://github.com/bzdvdn/teff/tree/main/examples/supervisor_complex/) runs it
+  ([`examples/supervisor_complex`](https://github.com/bzdvdn/teff/tree/master/examples/supervisor_complex/) runs it
   offline with no API key).
 - **A five-agent customer repair assistant.** RAG over a materials catalog,
   tools, streaming, a trace dashboard and a FastAPI app — a real, runnable
-  composition: [`examples/applications/repair-ai-chat`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/).
+  composition: [`examples/applications/repair-ai-chat`](https://github.com/bzdvdn/teff/tree/master/examples/applications/repair-ai-chat/).
 - **Support triage with human escalation.** A ticket is grounded in your
   knowledge base, a supervisor routes it to a specialist, then an escalation
   gate pauses for a human when confidence is low — routing is index-something:
@@ -145,7 +145,7 @@ steps:
     config: { key: approved, strategy: { any_of: [approve, ok, yes] } }
 ```
 
-Full version: [`examples/supervisor_complex/workflow.yaml`](https://github.com/bzdvdn/teff/blob/main/examples/supervisor_complex/workflow.yaml).
+Full version: [`examples/supervisor_complex/workflow.yaml`](https://github.com/bzdvdn/teff/blob/master/examples/supervisor_complex/workflow.yaml).
 
 ## The principles behind it
 
@@ -160,7 +160,7 @@ Teff was designed around a handful of firm rules:
 - **State is a plain dict.** One serializable snapshot per run, no hidden
   behaviour.
 
-The full frame is in [the Constitution](https://github.com/bzdvdn/teff/blob/main/CONSTITUTION.md).
+The full frame is in [the Constitution](https://github.com/bzdvdn/teff/blob/master/CONSTITUTION.md).
 
 ## Not a comparison chart — a comparison of patterns
 
@@ -211,4 +211,4 @@ Honest boundaries build trust:
 - [Install](getting-started/install.md)
 - [Quick start](getting-started/quickstart.md)
 - [Durable runs (checkpoints)](guide/durable.md)
-- [The Constitution — the principles](https://github.com/bzdvdn/teff/blob/main/CONSTITUTION.md)
+- [The Constitution — the principles](https://github.com/bzdvdn/teff/blob/master/CONSTITUTION.md)

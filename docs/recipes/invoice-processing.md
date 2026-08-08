@@ -6,8 +6,8 @@
 > with a full audit trail and durable resume for approvals.
 
 Runnable pieces:
-[`examples/structured_output/`](https://github.com/bzdvdn/teff/tree/main/examples/structured_output/) (schema-validated
-JSON) and [`examples/agent_approval/`](https://github.com/bzdvdn/teff/tree/main/examples/agent_approval/) (every
+[`examples/structured_output/`](https://github.com/bzdvdn/teff/tree/master/examples/structured_output/) (schema-validated
+JSON) and [`examples/agent_approval/`](https://github.com/bzdvdn/teff/tree/master/examples/agent_approval/) (every
 tool/step can pause for human sign-off).
 
 ## 1. The business problem

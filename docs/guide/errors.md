@@ -32,7 +32,7 @@ During a run:
   `__error__` edge.
 - A paused human step raises `GraphInterrupt` — this is expected control flow,
   catch it and resume with a `resume=` answer (see
-  [durable](durable.md) / [human_in_loop](https://github.com/bzdvdn/teff/tree/main/examples/human_in_loop/)).
+  [durable](durable.md) / [human_in_loop](https://github.com/bzdvdn/teff/tree/master/examples/human_in_loop/)).
 - Loop guards raise `WorkflowError` (`graph exceeded max_iterations=…`) so a
   run can never spin forever.
 

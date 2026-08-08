@@ -4,7 +4,7 @@
 > returns a risk score, and the next step is **decided at runtime** based on
 > that score — auto-approve, route to a human analyst, or deny outright.
 
-Runnable: [`examples/applications/fraud_gate/`](https://github.com/bzdvdn/teff/tree/main/examples/applications/fraud_gate/)
+Runnable: [`examples/applications/fraud_gate/`](https://github.com/bzdvdn/teff/tree/master/examples/applications/fraud_gate/)
 
 ## 1. The business problem
 
@@ -29,7 +29,7 @@ POST /api/review ──▶ ingest → analyser (LLM) → router ──(approve)�
 
 The **router node** is the interesting part: instead of a static `branch(key)`
 on a pre-computed key, it returns a
-[`Command`](https://github.com/bzdvdn/teff/tree/main/teff/node/command.py) whose `goto` decides the next node
+[`Command`](https://github.com/bzdvdn/teff/tree/master/teff/node/command.py) whose `goto` decides the next node
 at runtime:
 
 | Route | What the router returns | Why it matters |

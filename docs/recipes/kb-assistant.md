@@ -6,8 +6,8 @@
 > to a human agent instead of guessing.
 
 Runnable pieces:
-[`examples/rag_search/`](https://github.com/bzdvdn/teff/tree/main/examples/rag_search/) (RAG over a local CSV) and
-[`examples/applications/repair-ai-chat/`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/)
+[`examples/rag_search/`](https://github.com/bzdvdn/teff/tree/master/examples/rag_search/) (RAG over a local CSV) and
+[`examples/applications/repair-ai-chat/`](https://github.com/bzdvdn/teff/tree/master/examples/applications/repair-ai-chat/)
 (a production RAG + streaming version).
 
 ## 1. The business problem

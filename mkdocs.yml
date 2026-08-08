@@ -1,7 +1,7 @@
 site_name: Teff
 site_description: Workflow as data, agents as graphs. Python async framework for durable AI agents and workflows.
 repo_url: https://github.com/bzdvdn/teff
-edit_uri: edit/main/docs/
+edit_uri: edit/master/docs/
 theme:
   name: material
   language: en

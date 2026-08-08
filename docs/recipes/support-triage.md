@@ -7,12 +7,12 @@
 > lands in the right conversation.
 
 Runnable:
-[`examples/recipes/support_triage/`](https://github.com/bzdvdn/teff/tree/main/examples/recipes/support_triage/) (the
+[`examples/recipes/support_triage/`](https://github.com/bzdvdn/teff/tree/master/examples/recipes/support_triage/) (the
 compact supervisor + HITL version, offline-tested), plus the larger pieces it
 composes:
-[`examples/simple_router/`](https://github.com/bzdvdn/teff/tree/main/examples/simple_router/) (the `route()`
+[`examples/simple_router/`](https://github.com/bzdvdn/teff/tree/master/examples/simple_router/) (the `route()`
 supervisor skeleton) and
-[`examples/applications/repair-ai-chat/`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/)
+[`examples/applications/repair-ai-chat/`](https://github.com/bzdvdn/teff/tree/master/examples/applications/repair-ai-chat/)
 (the RAG + streaming + five-agent app).
 
 ## 1. The business problem
@@ -60,7 +60,7 @@ agent.interrupt("escalate", prompt="Route this ticket to a human:")
 Two decisions shape this graph:
 
 - **RAG is a tool, not a step.** The knowledge base is exposed as a
-  [`RAGTool`](https://github.com/bzdvdn/teff/tree/main/teff/rag/tool.py) so each specialist can ground answers
+  [`RAGTool`](https://github.com/bzdvdn/teff/tree/master/teff/rag/tool.py) so each specialist can ground answers
   in the docs — the retriever works *inside* the agent loop, not as a
   one-shot prefix. See [RAG](../guide/rag.md).
 - **Escalation is an `Interrupt`, driven by confidence.** When the supervisor
@@ -103,9 +103,9 @@ Offline, mocked LLM + canned RAG corpus:
 - the loop cannot hang (bounded like `simple_router`).
 
 Start from the offline suite in
-[`examples/simple_router/tests/`](https://github.com/bzdvdn/teff/tree/main/examples/simple_router/tests/) and the
+[`examples/simple_router/tests/`](https://github.com/bzdvdn/teff/tree/master/examples/simple_router/tests/) and the
 FastAPI tests in
-[`examples/applications/repair-ai-chat/tests/`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/tests/).
+[`examples/applications/repair-ai-chat/tests/`](https://github.com/bzdvdn/teff/tree/master/examples/applications/repair-ai-chat/tests/).
 
 ## 6. Cost & observability
 

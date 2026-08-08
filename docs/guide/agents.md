@@ -106,7 +106,7 @@ async with mcp_tools(command=["uvx", "mcp-server-git"]) as tools:
 
 `command` starts a stdio server (split into argv), `url` connects to a
 Streamable HTTP endpoint. The session stays open for the `async with` block.
-A runnable pair lives in [`examples/mcp/`](https://github.com/bzdvdn/teff/tree/main/examples/mcp/).
+A runnable pair lives in [`examples/mcp/`](https://github.com/bzdvdn/teff/tree/master/examples/mcp/).
 
 ## Multi-agent supervisors
 

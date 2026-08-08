@@ -130,12 +130,12 @@ flow.supervisor(
 flow.route("next_agent", finish=..., direct=..., planner=..., estimator=...)
 ```
 
-See [`examples/applications/service_desk`](https://github.com/bzdvdn/teff/tree/main/examples/applications/service_desk/)
+See [`examples/applications/service_desk`](https://github.com/bzdvdn/teff/tree/master/examples/applications/service_desk/)
 for a concrete chat router built on these guards (one-word dispatch, the
 `done_keys` / `fallback_agent` guards, a bounded loop and a human `Interrupt`
 deploy gate).  For the alternative design — a single ReAct coordinator that
 drives specialists as *tools* instead of a decider node — see
-[`examples/applications/repair-ai-chat`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/).
+[`examples/applications/repair-ai-chat`](https://github.com/bzdvdn/teff/tree/master/examples/applications/repair-ai-chat/).
 
 Two override hooks cover deterministic policies:
 
@@ -247,12 +247,12 @@ that is how writer + reviewer collaborate through the same conversation.
 
 ## Run it
 
-- [`examples/simple_router/`](https://github.com/bzdvdn/teff/tree/main/examples/simple_router/)
+- [`examples/simple_router/`](https://github.com/bzdvdn/teff/tree/master/examples/simple_router/)
   — a minimal two-agent supervisor, offline tests.
-- [`examples/applications/service_desk/`](https://github.com/bzdvdn/teff/tree/main/examples/applications/service_desk/)
+- [`examples/applications/service_desk/`](https://github.com/bzdvdn/teff/tree/master/examples/applications/service_desk/)
   — the default `supervisor()` chat router: specialists, guards, bounded loop
   and a human approval gate.
-- [`examples/applications/repair-ai-chat/`](https://github.com/bzdvdn/teff/tree/main/examples/applications/repair-ai-chat/)
+- [`examples/applications/repair-ai-chat/`](https://github.com/bzdvdn/teff/tree/master/examples/applications/repair-ai-chat/)
   — the alternative: one ReAct coordinator driving specialists as tools (RAG + streaming).
 - `teff new <name>` — scaffolds the same supervisor with `HOW TO EXTEND`
   comments (see [CLI](../cli.md)).
