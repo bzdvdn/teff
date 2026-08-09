@@ -124,6 +124,210 @@ class TestTeam:
             )
 
 
+class TestFlowTeamPythonApi:
+    def _flow(self):
+        from teff.flow import Flow
+        from teff.provider import ProviderRegistry
+
+        return Flow(
+            "team",
+            providers=ProviderRegistry.from_presets("ollama"),
+            default_provider="ollama",
+            default_model="llama3.1:8b",
+        )
+
+    def test_team_accepts_agent_role(self):
+        from teff.flow import AgentRole
+
+        flow = self._flow()
+        flow.team(
+            "Route to coder or talk, then finish.",
+            roles={
+                "coder": AgentRole("You write code.", output_key="code"),
+                "talk": AgentRole("You chat.", output_key="talk"),
+            },
+            fallback="talk",
+        )
+        g = flow.compile()
+        first = g.entry_point
+        assert g.nodes[first].type == "supervisor"
+        subflows = {nid for nid, n in g.nodes.items() if n.type == "subflow"}
+        assert {"coder", "talk"} <= subflows
+        conds = {e.condition for e in g.edges if e.source_id == first}
+        assert conds >= {"next_agent=coder", "next_agent=talk"}
+
+    def test_team_agent_role_use_tools(self):
+        from teff.flow import AgentRole
+
+        flow = self._flow()
+        flow.team(
+            "Route or finish.",
+            roles={
+                "coder": AgentRole("You code.", output_key="code", use_tools=["shell"]),
+            },
+        )
+        g = flow.compile()
+        coder = next(n for n in g.nodes.values() if n.type == "subflow")
+        inner = coder._graph
+        harness = next(n for n in inner.nodes.values() if n.type == "react_agent")
+        assert harness.config.get("use_tools") == ["shell"]
+
+    def test_team_dict_recipe_parity(self):
+        flow = self._flow()
+        flow.team(
+            "Route or finish.",
+            roles={
+                "coder": {"system": "You code.", "output_key": "code"},
+            },
+        )
+        g = flow.compile()
+        assert g.nodes[g.entry_point].type == "supervisor"
+        assert any(n.type == "subflow" for n in g.nodes.values())
+
+    def test_team_requires_model_and_provider(self):
+        from teff.flow import AgentRole, Flow
+
+        flow = Flow("bad")
+        with pytest.raises(ValueError, match="model"):
+            flow.team("x", roles={"coder": AgentRole("c", output_key="code")})
+
+
+class TestSupervisorSupervise:
+    def test_supervisor_idiom_compiles_decider(self):
+        g = compile_doc(
+            textwrap.dedent(
+                """
+                name: native
+                default_model: llama3.1:8b
+                default_provider: ollama
+                steps:
+                  - supervisor:
+                      id: lead
+                      system: "Route to coder or finish."
+                      route_keys: {coder: code}
+                      done_keys: [code]
+                      fallback: coder
+                      max_rounds: 5
+                """
+            )
+        )
+        first = g.entry_point
+        assert first == "lead"
+        assert g.nodes[first].type == "supervisor"
+        assert g.nodes[first].config["route_keys"] == {"coder": "code"}
+        assert g.nodes[first].config["done_keys"] == {"code"}
+        assert g.nodes[first].config["fallback_agent"] == "coder"
+        assert g.nodes[first].config["max_rounds"] == 5
+
+    def test_supervisor_embedded_agents_wire_loop(self):
+        g = compile_doc(
+            textwrap.dedent(
+                """
+                name: native
+                default_model: llama3.1:8b
+                default_provider: ollama
+                steps:
+                  - supervisor:
+                      id: lead
+                      system: "Route to coder or finish."
+                      route_keys: {coder: code}
+                      done_keys: [code]
+                      fallback: coder
+                      agents:
+                        coder: [agent_step: {id: coder, system: "You code.",
+                                              output_key: code}]
+                      finish:
+                        - transform: {action: now, output_key: delivered_at}
+                """
+            )
+        )
+        lead = g.entry_point
+        assert lead == "lead"
+        assert g.nodes[lead].type == "supervisor"
+        conds = {e.condition for e in g.edges if e.source_id == lead}
+        assert conds == {"next_agent=coder", "next_agent=finish"}
+        assert any(e.source_id == "coder" and e.target_id == lead for e in g.edges)
+        assert any(n.type == "transform" for n in g.nodes.values())
+
+    def test_supervisor_embedded_agents_require_mapping(self):
+        with pytest.raises(ConfigError, match="agents"):
+            compile_doc(
+                textwrap.dedent(
+                    """
+                    name: bad
+                    default_model: llama3.1:8b
+                    default_provider: ollama
+                    steps:
+                      - supervisor:
+                          id: lead
+                          system: "Route."
+                          agents: []
+                    """
+                )
+            )
+
+    def test_supervise_routes_existing_decider(self):
+        g = compile_doc(
+            textwrap.dedent(
+                """
+                name: native
+                default_model: llama3.1:8b
+                default_provider: ollama
+                steps:
+                  - supervisor:
+                      id: lead
+                      system: "Route to coder or finish."
+                      route_keys: {coder: code}
+                      done_keys: [code]
+                      fallback: coder
+                  - supervise:
+                      key: next_agent
+                      agents:
+                        coder: [agent_step: {id: coder, system: "You code.",
+                                              output_key: code}]
+                      finish:
+                        - transform: {action: now, output_key: delivered_at}
+                """
+            )
+        )
+        lead = g.entry_point
+        assert lead == "lead"
+        conds = {e.condition for e in g.edges if e.source_id == lead}
+        assert conds == {"next_agent=coder", "next_agent=finish"}
+        assert any(e.source_id == "coder" and e.target_id == lead for e in g.edges)
+        assert any(n.type == "transform" for n in g.nodes.values())
+
+    def test_supervise_requires_key(self):
+        with pytest.raises(ConfigError, match="key"):
+            compile_doc(
+                textwrap.dedent(
+                    """
+                    name: bad
+                    default_model: llama3.1:8b
+                    default_provider: ollama
+                    steps:
+                      - supervise:
+                          agents:
+                            coder: [transform: {action: uppercase}]
+                    """
+                )
+            )
+
+    def test_supervise_requires_agents(self):
+        with pytest.raises(ConfigError, match="agents"):
+            compile_doc(
+                textwrap.dedent(
+                    """
+                    name: bad
+                    default_model: llama3.1:8b
+                    default_provider: ollama
+                    steps:
+                      - supervise: {key: next_agent}
+                    """
+                )
+            )
+
+
 class TestMapLoopInterrupt:
     def test_map_compiles_processor(self):
         g = compile_doc(
@@ -741,6 +945,54 @@ class TestTwoLayerValidation:
         p.write_text("name: b\nsteps:\n  - team: {leader: {system: hi}}\n")
         errors = validate_flow_file(str(p))
         assert any("roles" in e["message"] for e in errors)
+
+    def test_validate_flow_supervisor_and_supervise_ok(self, tmp_path):
+        from teff.yaml_schema import validate_flow_file
+
+        p = tmp_path / "wf.yaml"
+        p.write_text(
+            textwrap.dedent(
+                """
+                name: v
+                default_model: llama3.1:8b
+                default_provider: ollama
+                steps:
+                  - supervisor:
+                      id: lead
+                      system: "Route or finish."
+                      route_keys: {coder: code}
+                      fallback: coder
+                      agents:
+                        coder: [agent_step: {system: "code",
+                                              output_key: code}]
+                      finish:
+                        - transform: {action: now, output_key: delivered_at}
+                  - supervise:
+                      key: next_agent
+                      agents:
+                        talk: [agent_step: {system: "chat",
+                                             output_key: talk}]
+                """
+            )
+        )
+        assert not validate_flow_file(str(p))
+
+    def test_validate_flow_supervisor_agents_non_mapping(self, tmp_path):
+        from teff.yaml_schema import validate_flow_file
+
+        p = tmp_path / "wf.yaml"
+        p.write_text("name: b\nsteps:\n  - supervisor: {id: lead, agents: []}\n")
+        msgs = {e["message"] for e in validate_flow_file(str(p))}
+        assert "supervisor `agents:` must be a non-empty mapping" in msgs
+
+    def test_validate_flow_supervise_requires_key_and_agents(self, tmp_path):
+        from teff.yaml_schema import validate_flow_file
+
+        p = tmp_path / "wf.yaml"
+        p.write_text("name: b\nsteps:\n  - supervise: {}\n")
+        msgs = {e["message"] for e in validate_flow_file(str(p))}
+        assert "supervise requires a `key:`" in msgs
+        assert "supervise requires a non-empty `agents:` mapping" in msgs
 
     def test_validate_flow_loop_requires_keys(self, tmp_path):
         from teff.yaml_schema import validate_flow_file

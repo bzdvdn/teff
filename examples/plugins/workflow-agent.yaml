@@ -1,5 +1,5 @@
 name: plugins-agent
-description: >
+description: >-
   ReAct agent that can use the custom tools from the `plugins/` folder
   (`word_count`, `slugify`) on top of the built-ins.  Same plugin
   discovery as workflow.yaml - the only difference is an LLM in the loop,
@@ -8,26 +8,14 @@ description: >
       ollama pull llama3.1:8b
       teff daemon -f workflow-agent.yaml --once
 
+default_provider: ollama
+default_model: llama3.1:8b
+
 steps:
-  - id: agent
-    type: react_agent
-    config:
-      model: llama3.1:8b
-      system: >
+  - agent_step:
+      id: agent
+      system: >-
         You have two extra tools: word_count and slugify.  Use them when
         the user asks about word counts or URL slugs.
-      input_key: input
       output_key: answer
       use_tools: all
-
-  - id: tool_exec
-    type: tool_exec
-    config:
-      use_tools: all
-
-edges:
-  - from: agent
-    to: tool_exec
-    condition: _tool_call_name!=
-  - from: tool_exec
-    to: agent

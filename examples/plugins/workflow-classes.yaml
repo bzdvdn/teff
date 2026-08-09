@@ -1,5 +1,5 @@
 name: plugins-classes
-description: >
+description: >-
   Class-based plugins.  `plugins/classes.py` registers a Tool subclass
   (`upper`) and a Node subclass (`uppercase_node`) imperatively - no
   decorators.  No network, no API key.
@@ -12,10 +12,8 @@ tools:
   - type: upper
 
 steps:
-  - id: up
-    type: uppercase_node
-    config:
-      input_key: body
-      output_key: shouted
-
-edges: []
+  - type:
+      type: uppercase_node
+      config:
+        input_key: body
+        output_key: shouted

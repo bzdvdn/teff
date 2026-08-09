@@ -218,6 +218,8 @@ FLOW_IDIOMS = (
     "agent",
     "agent_step",
     "team",
+    "supervisor",
+    "supervise",
     "parallel",
     "map",
     "loop",
@@ -443,6 +445,35 @@ def validate_flow(
                     {
                         "path": f"{path}.{idiom}.key",
                         "message": "interrupt requires a `key:`",
+                    }
+                )
+        elif idiom == "supervisor":
+            if "agents" in spec and (
+                not isinstance(spec["agents"], dict) or not spec["agents"]
+            ):
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.agents",
+                        "message": "supervisor `agents:` must be a non-empty mapping",
+                    }
+                )
+        elif idiom == "supervise":
+            if "key" not in spec:
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.key",
+                        "message": "supervise requires a `key:`",
+                    }
+                )
+            if (
+                "agents" not in spec
+                or not isinstance(spec["agents"], dict)
+                or not spec["agents"]
+            ):
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.agents",
+                        "message": "supervise requires a non-empty `agents:` mapping",
                     }
                 )
         elif idiom == "parallel":

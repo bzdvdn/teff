@@ -19,6 +19,7 @@ from teff.provider import ProviderRegistry
 
 if TYPE_CHECKING:
     from teff.node.ask import Ask
+    from teff.flow.agent import AgentRole
 
 #: A plain ``(ctx, state) -> dict | Command`` callable accepted by
 #: :meth:`Flow.step` (wrapped into a function node at runtime).
@@ -272,6 +273,108 @@ class Flow:
             if not isinstance(node, Supervisor):
                 raise TypeError("supervisor() expects a Supervisor instance")
         return self.step(node, id=id)
+
+    def team(
+        self,
+        system: str = "",
+        *,
+        roles: dict[str, "AgentRole"],
+        model: str | None = None,
+        provider: str | None = None,
+        messages_key: str = "messages",
+        route_keys: dict[str, str] | None = None,
+        done_keys: list[str] | None = None,
+        done_mode: str = "all",
+        fallback: str = "",
+        max_rounds: int = 6,
+        finish: "Node | list[Node] | None" = None,
+        id: str | None = None,
+    ) -> "Flow":
+        """Compose a supervised agent team in one call.
+
+        Builds a :class:`~teff.node.supervisor.Supervisor` decider plus one
+        routed agent per *role* and wires the supervisor loop in a single
+        step — the programmatic twin of the ``team:`` flow.yaml idiom::
+
+            flow.team(
+                "Route to planner or coder, then finish.",
+                roles={
+                    "planner": AgentRole("You plan.", output_key="plan"),
+                    "coder": AgentRole("You code.", output_key="code"),
+                },
+                fallback="planner",
+            )
+
+        Each *role* value is an :class:`~teff.flow.AgentRole` (the
+        recommended spelling), a plain dict recipe accepted for YAML parity
+        (``{system, output_key, use_tools, ...}``), a :class:`Node` /
+        :class:`~teff.flow.SubFlow` used as-is, a :class:`Flow` embedded as a
+        :class:`SubFlow`, or a list of nodes run in sequence for that route.
+
+        The leader decider inherits *model*/*provider* (or the flow's
+        ``default_model``/``default_provider``).  *route_keys* defaults to
+        ``{role: output_key}``; *done_keys*/*done_mode*/*fallback*/``max_rounds``
+        drive the built-in safety guards (see :class:`Supervisor`).  When the
+        decider replies ``finish`` the flow continues through *finish* (or
+        terminates when omitted).  *id* names the supervisor node.
+
+        Returns ``self`` for chaining.
+        """
+        from teff.flow.agent import AgentRole
+        from teff.node.supervisor import Supervisor
+
+        self._check_continuation()
+        if not isinstance(roles, dict) or not roles:
+            raise ValueError("team requires a non-empty `roles` mapping")
+        model = model or self._default_model
+        provider = provider or self._default_provider
+        if not model or not provider:
+            raise ValueError(
+                "team requires `model` and `provider` (or `default_model`/"
+                "`default_provider` on the flow)"
+            )
+
+        if route_keys is None:
+            route_keys = {}
+            for role_name, spec in roles.items():
+                if isinstance(spec, AgentRole):
+                    out = spec.output_key or role_name
+                elif isinstance(spec, dict):
+                    out = spec.get("output_key") or role_name
+                else:
+                    out = role_name
+                route_keys[role_name] = out
+
+        agents: dict[str, "Node | list[Node]"] = {}
+        for role_name, spec in roles.items():
+            if isinstance(spec, AgentRole):
+                agents[role_name] = spec.build(
+                    model=model, provider=provider, id=role_name
+                )
+            elif isinstance(spec, dict):
+                role = AgentRole.from_mapping(spec, name=role_name)
+                agents[role_name] = role.build(
+                    model=model, provider=provider, id=role_name
+                )
+            elif isinstance(spec, Flow):
+                agents[role_name] = SubFlow(graph=spec.compile())
+            else:
+                agents[role_name] = self._as_chain(spec)
+
+        supervisor = Supervisor(
+            system=system,
+            model=model,
+            provider=provider,
+            messages_key=messages_key,
+            route_keys=route_keys,
+            done_keys=set(done_keys or ()),
+            done_mode=done_mode,
+            fallback_agent=fallback,
+            max_rounds=max_rounds,
+        )
+        self.supervisor(supervisor, id=id)
+        self.route("next_agent", finish=finish, **agents)
+        return self
 
     def add_flow(self, flow: "Flow", id: str | None = None, **kw) -> "Flow":
         """Embed a sub-flow as a single node (SubFlow).

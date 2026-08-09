@@ -1,0 +1,80 @@
+name: supervisor_native
+description: >-
+  The minimal route() supervisor spelled with the raw building blocks
+  instead of the `team:` idiom — one `supervisor:` step that carries the
+  decider AND its `agents:` mapping plus an optional `finish:` chain, so a
+  supervised team reads as a single cohesive block.  Same shape as
+  examples/simple_router_yaml, but the full Supervisor surface (route_keys,
+  done_keys, fallback, max_rounds, output_key) is exposed inline.
+
+state:
+  schema:
+    messages:
+      reducer: append
+      type: list
+  initial:
+    messages: []
+    next_agent: ""
+    supervisor_rounds: 0
+    code: ""
+    talk: ""
+    delivered_at: ""
+
+default_provider: ollama
+default_model: llama3.1:8b
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
+steps:
+  - supervisor:
+      id: lead
+      system: |-
+        You are a router. Your job is to pick the agent that fits the user's message.
+
+        Agents:
+        - coder — a question about code, Python or programming
+        - talk — anything else (small talk, general questions)
+        - finish — the conversation is already answered and done
+
+        The message includes the current round and the user's request.  Reply with
+        exactly ONE word: coder, talk or finish.
+
+        Rules:
+        - No punctuation, no quotes, no explanation — only the single word.
+        - If an agent already answered and the user only confirms or continues the
+          same topic, return: finish.
+        - Never invent agents that are not listed above.
+      route_keys: {coder: code, talk: talk}
+      done_keys: [code, talk]
+      done_mode: any
+      fallback: talk
+      max_rounds: 6
+      agents:
+        coder:
+          - agent_step:
+              id: coder
+              system: |-
+                You are a concise Python coding assistant.
+
+                Rules:
+                - Reply with the code and a one-line explanation.
+                - Start directly with the code block; no preamble such as "Sure!".
+                - Never invent functions or libraries.
+              output_key: code
+        talk:
+          - agent_step:
+              id: talk
+              system: |-
+                You are a friendly chat assistant.
+
+                Rules:
+                - Reply briefly and warmly.
+                - Never invent facts.
+                - Start directly with your reply; no preamble.
+              output_key: talk
+      finish:
+        - transform: {action: now, output_key: delivered_at}
