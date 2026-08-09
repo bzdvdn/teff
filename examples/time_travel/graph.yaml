@@ -1,0 +1,59 @@
+name: time_travel
+description: >
+  Time travel as pure YAML — no custom code, no LLM.  A story-writing graph
+  (four `append` transforms, one per chapter) runs to completion, and every
+  checkpoint survives because the run uses a history checkpointer
+  (sqlite_history / pg_history).  The story can then be rewound to any
+  earlier checkpoint, edited, and replayed — the past stays identical, the
+  future is rewritten:
+
+    setup -> conflict -> twist -> ending
+
+  The four steps are built-in `transform` nodes with `action: append`: each
+  renders its `template` from state and accumulates into `chapters`.  Run
+  with `--checkpoint '{"type":"sqlite_history","path":"cp.db"}'` so the
+  history table is written.
+
+state:
+  initial:
+    hero: Ada
+    setting: Bellmore
+    twist: the butler did it
+    chapters: []
+
+steps:
+  - id: setup
+    type: transform
+    config:
+      action: append
+      template: "Chapter 1: A hero named {hero} sets out."
+      output_key: chapters
+
+  - id: conflict
+    type: transform
+    config:
+      action: append
+      template: "Chapter 2: They come to the town of {setting}."
+      output_key: chapters
+
+  - id: twist
+    type: transform
+    config:
+      action: append
+      template: "Chapter 3: The twist: {twist}!"
+      output_key: chapters
+
+  - id: ending
+    type: transform
+    config:
+      action: append
+      template: "Chapter 4: And so the tale of {hero} ends."
+      output_key: chapters
+
+edges:
+  - from: setup
+    to: conflict
+  - from: conflict
+    to: twist
+  - from: twist
+    to: ending

@@ -1,0 +1,52 @@
+name: hello-offline
+description: >
+  A deterministic, LLM-free workflow. Reads a note, counts its lines, and
+  routes to a "single-line" or "multi-line" branch based on that number.
+
+  No model, no network, no API key — run it anywhere:
+      teff run --file workflow.yaml
+
+state:
+  initial:
+    text: "just one line"
+
+steps:
+  - id: count
+    type: transform
+    config:
+      action: count_lines
+      input_key: text
+      output_key: lines
+
+  - id: single
+    type: transform
+    config:
+      action: value
+      value: single-line note
+      output_key: note
+
+  - id: multi
+    type: transform
+    config:
+      action: value
+      value: multi-line note
+      output_key: note
+
+  - id: status
+    type: transform
+    config:
+      action: value
+      value: done
+      output_key: status
+
+edges:
+  - from: count
+    to: single
+    condition: lines=1
+  - from: count
+    to: multi
+    condition: lines!=1
+  - from: single
+    to: status
+  - from: multi
+    to: status

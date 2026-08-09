@@ -1,0 +1,29 @@
+name: declarative-hooks
+description: >
+  Observes every node with a named hook. The hook callable lives in a
+  plugin (plugins/trace_hooks.py) and is referenced by name from the
+  ``hooks:`` block — no Python glue in the workflow itself.
+
+  Run: teff run --file workflow.yaml
+plugins: [plugins/trace_hooks.py]
+
+hooks:
+  on_node_start: tick
+  on_node_end: tick
+
+state:
+  initial:
+    text: "  hello  "
+
+steps:
+  - id: trim
+    type: transform
+    config: {action: trim, input_key: text, output_key: clean}
+
+  - id: shout
+    type: transform
+    config: {action: uppercase, input_key: clean, output_key: shout}
+
+edges:
+  - from: trim
+    to: shout

@@ -1,0 +1,47 @@
+name: declarative-checkpoint
+description: >
+  Durable run enabled by the checkpoint: block. State is saved before every
+  node, so an interrupted run resumes from where it stopped instead of
+  restarting. Re-running with the same --checkpoint-id continues (or resumes)
+  that run.
+
+  Interactively:
+    teff run --file workflow.yaml --checkpoint-id demo --interactive
+    # answer the gate question, e.g. "yes"
+  Then resume from durable state:
+    teff run --file workflow.yaml --checkpoint-id demo
+
+checkpoint:
+  type: sqlite
+  path: data/checkpoints.db
+
+state:
+  schema:
+    approved:
+      reducer: override
+      type: string
+  initial:
+    doc: "draft report"
+
+steps:
+  - id: write
+    type: transform
+    config: {action: uppercase, input_key: doc, output_key: report}
+
+  - id: gate
+    type: interrupt
+    config:
+      key: approved
+      prompt: "Approve the report? (yes / no)"
+    retry: {enabled: false}
+
+  - id: ship
+    type: transform
+    config: {action: value, value: shipped, output_key: status}
+
+edges:
+  - from: write
+    to: gate
+  - from: gate
+    to: ship
+    condition: "approved=yes"

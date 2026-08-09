@@ -1,0 +1,111 @@
+name: github-reviewer
+description: >
+  A GitHub pull-request reviewer daemon for several repositories.  Each tick
+  the agent walks every repo in `repo_ids`, lists its open PRs, reviews each
+  new one (fetching its diff with `github_get_pr_changes`), decides approve
+  vs comment, posts the verdict back to GitHub and notifies Telegram.
+  Already-reviewed PRs are tracked in `kv_store` under
+  `reviewed-<repo>-<number>` so they are never reviewed twice.  The
+  transient conversation is rebuilt every tick so each poll starts clean;
+  durable review state lives in the kv_store file.
+
+  Run it with the CLI's daemon mode:
+
+      GITHUB_TOKEN=... TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=... \
+      teff daemon -f workflow.yaml --interval 60
+
+  kv_store keeps already-reviewed PRs across restarts, so `--checkpoint`
+  is optional; add `--checkpoint '{"type":"file","path":"data/daemon"}'`
+  if you also want to persist counters and mid-review progress.
+
+tools:
+  - type: github_list_open_prs
+    config:
+      token: "${GITHUB_TOKEN}"
+  - type: github_get_pr_changes
+    config:
+      token: "${GITHUB_TOKEN}"
+  - type: github_post_comment
+    config:
+      token: "${GITHUB_TOKEN}"
+  - type: github_approve
+    config:
+      token: "${GITHUB_TOKEN}"
+  - type: send_telegram
+    config:
+      token: "${TELEGRAM_BOT_TOKEN}"
+      chat_id: "${TELEGRAM_CHAT_ID}"
+  - type: kv_store
+    config:
+      path: "data/reviewed.json"
+
+state:
+  initial:
+    repo_ids:
+      - "owner/repo1"
+      - "owner/repo2"
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+steps:
+  - id: reset
+    type: context_builder
+    config:
+      sections:
+        repo_ids: "Repositories to review"
+      messages_key: messages
+      output_key: input
+      reset_keys: [messages, _tool_call_name, _tool_calls]
+
+  - id: reviewer
+    type: react_agent
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >
+        You are an automated GitHub code reviewer running as a daemon.
+
+        The "Repositories to review:" section lists the repositories to poll
+        (one per line, e.g. `owner/repo`).  For EACH repository:
+
+        1. Call github_list_open_prs to list its open pull requests (each
+           line: `#N  state  title`).
+        2. For every open PR you have NOT reviewed yet:
+           a. Check kv_store for key "reviewed-<repo>-<number>".  If it
+              exists, skip.
+           b. Call github_get_pr_changes to fetch the diff (pass the same
+              repo and the PR number).
+           c. Decide the verdict:
+              - If the diff is trivial (typos, formatting, comments, tiny
+                renames) — call github_approve.  This is a "simple review".
+              - Otherwise — call github_post_comment with a short, specific,
+                actionable list of findings (bugs, edge cases, style).
+           d. Record kv_store key "reviewed-<repo>-<number>" = "done" so it
+              is not reviewed on the next poll.
+        3. When you have processed every repository, send ONE send_telegram
+           summary of what you approved or commented.
+
+        Pass the repo to every github tool call.  Be conservative: only
+        auto-approve genuinely trivial changes.
+      input_key: input
+      output_key: review_summary
+      messages_key: messages
+      use_tools: all
+
+  - id: tool_exec
+    type: tool_exec
+    config:
+      messages_key: messages
+      use_tools: all
+
+edges:
+  - from: reset
+    to: reviewer
+  - from: reviewer
+    to: tool_exec
+    condition: _tool_call_name!=
+  - from: tool_exec
+    to: reviewer

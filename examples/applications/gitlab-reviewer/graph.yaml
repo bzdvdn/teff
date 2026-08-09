@@ -1,0 +1,116 @@
+name: gitlab-reviewer
+description: >
+  A GitLab merge-request reviewer daemon for several projects.  Each tick
+  the agent walks every project in `project_ids`, lists its open MRs,
+  reviews each new one (fetching its diff with `gitlab_get_mr_changes`),
+  decides approve vs comment, posts the verdict back to GitLab and notifies
+  Telegram.  Already-reviewed MRs are tracked in `kv_store` under
+  `reviewed-<project>-<IID>` so they are never reviewed twice.  The
+  transient conversation is rebuilt every tick so each poll starts clean;
+  durable review state lives in the kv_store file.
+
+  Run it with the CLI's daemon mode:
+
+      GITLAB_URL=... GITLAB_TOKEN=... \
+      TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=... \
+      teff daemon -f workflow.yaml --interval 60
+
+  kv_store keeps already-reviewed MRs across restarts, so `--checkpoint`
+  is optional; add `--checkpoint '{"type":"file","path":"data/daemon"}'`
+  if you also want to persist counters and mid-review progress.
+
+tools:
+  - type: gitlab_list_open_mrs
+    config:
+      url: "${GITLAB_URL}"
+      token: "${GITLAB_TOKEN}"
+  - type: gitlab_get_mr_changes
+    config:
+      url: "${GITLAB_URL}"
+      token: "${GITLAB_TOKEN}"
+  - type: gitlab_post_note
+    config:
+      url: "${GITLAB_URL}"
+      token: "${GITLAB_TOKEN}"
+  - type: gitlab_approve
+    config:
+      url: "${GITLAB_URL}"
+      token: "${GITLAB_TOKEN}"
+  - type: send_telegram
+    config:
+      token: "${TELEGRAM_BOT_TOKEN}"
+      chat_id: "${TELEGRAM_CHAT_ID}"
+  - type: kv_store
+    config:
+      path: "data/reviewed.json"
+
+state:
+  initial:
+    project_ids:
+      - "group/repo1"
+      - "group/repo2"
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+steps:
+  - id: reset
+    type: context_builder
+    config:
+      sections:
+        project_ids: "Projects to review"
+      messages_key: messages
+      output_key: input
+      reset_keys: [messages, _tool_call_name, _tool_calls]
+
+  - id: reviewer
+    type: react_agent
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >
+        You are an automated GitLab code reviewer running as a daemon.
+
+        The "Projects to review:" section lists the projects to poll (one
+        per line, e.g. `group/repo`).  For EACH project:
+
+        1. Call gitlab_list_open_mrs to list its open merge requests (each
+           line: `!IID  state  title`).
+        2. For every open MR you have NOT reviewed yet:
+           a. Check kv_store for key "reviewed-<project>-<IID>".  If it
+              exists, skip.
+           b. Call gitlab_get_mr_changes to fetch the diff (pass the same
+              project).
+           c. Decide the verdict:
+              - If the diff is trivial (typos, formatting, comments, tiny
+                renames) — call gitlab_approve.  This is a "simple review".
+              - Otherwise — call gitlab_post_note with a short, specific,
+                actionable list of findings (bugs, edge cases, style).
+           d. Record kv_store key "reviewed-<project>-<IID>" = "done" so it
+              is not reviewed on the next poll.
+        3. When you have processed every project, send ONE send_telegram
+           summary of what you approved or commented.
+
+        Pass the project to every gitlab tool call.  Be conservative: only
+        auto-approve genuinely trivial changes.
+      input_key: input
+      output_key: review_summary
+      messages_key: messages
+      use_tools: all
+
+  - id: tool_exec
+    type: tool_exec
+    config:
+      messages_key: messages
+      use_tools: all
+
+edges:
+  - from: reset
+    to: reviewer
+  - from: reviewer
+    to: tool_exec
+    condition: _tool_call_name!=
+  - from: tool_exec
+    to: reviewer

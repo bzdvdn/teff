@@ -1,0 +1,36 @@
+name: text-pipeline
+description: >
+  A zero-dependency pipeline (no API key needed) that chains
+  transform operations. Trims whitespace, uppercases, and counts lines.
+
+state:
+  initial:
+    title: "  hello world  "
+
+steps:
+  - id: trim
+    type: transform
+    config:
+      action: trim
+      input_key: title
+      output_key: trimmed
+
+  - id: uppercase
+    type: transform
+    config:
+      action: uppercase
+      input_key: trimmed
+      output_key: loud
+
+  - id: count
+    type: transform
+    config:
+      action: count_lines
+      input_key: loud
+      output_key: line_count
+
+edges:
+  - from: trim
+    to: uppercase
+  - from: uppercase
+    to: count

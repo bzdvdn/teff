@@ -1,0 +1,160 @@
+name: supervisor_complex
+description: >-
+  A pure-YAML supervisor that routes work to a team of specialist agents
+  (planner + coder) declared in their own included files, then runs a
+  quality gate: a Map fans each review issue out to a parallel fixer, a
+  loop rewrites the code until the reviewer verdict passes, an interrupt
+  gate (a flexible `any_of` strategy) gates delivery, and a `command` node
+  routes the operator's decision.
+
+       include:  team/lead.yaml + team/planner.yaml + team/coder.yaml
+
+  supervisor (team lead)
+     ├─ planner → plan      ├─ coder → code      └─ finish → quality gate
+  review_quality ──► extract_verdict ──► route(command: verdict? goto)
+     │  pass ──────────────────────────────────────────► approve (interrupt)
+     └  needs_work ─► refine(loop until verdict=pass)
+                             │ body: map(fix issues in parallel)
+                             │       rewrite code → re-review → verdict
+                             └► approve ─► deliver(command: decision? goto)
+                                                    │ approve → final(now)
+                                                    └ rework ─► refine
+
+  The operator approves with "approve", "отлично" or "ok" (any_of passes);
+  any other word = rework, so the loop runs again.
+
+state:
+  schema:
+    messages:
+      reducer: append
+      type: list
+  initial:
+    messages:
+      - role: user
+        content: Реализуй функцию подсчёта суммы покупок.
+    next_agent: ""
+    supervisor_rounds: 0
+    plan: ""
+    code: ""
+    critique: {}
+    verdict: ""
+    issues: []
+    fixes: []
+    decision: ""
+    delivered_at: ""
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
+include:
+  - path: team/lead.yaml
+  - path: team/planner.yaml
+  - path: team/coder.yaml
+
+steps:
+  - id: review_quality
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a strict code reviewer. Review the code and reply with a
+        single JSON object:
+        {{ "verdict": "pass" or "needs_work", "issues": [list of short problems to fix] }}.
+      prompt: "Review the code:\n\n{code}\n\nReply with JSON."
+      output_key: critique
+      parse: true
+
+  - id: extract_verdict
+    type: transform
+    config:
+      action: json_get
+      input_key: critique
+      field: verdict
+      output_key: verdict
+
+  - id: route
+    type: command
+    config:
+      routes:
+        - {when: "verdict=pass", goto: approve}
+        - {when: "verdict=needs_work", goto: refine}
+      goto: refine
+
+  - id: refine
+    type: loop
+    config:
+      key: verdict
+      until: pass
+      max_rounds: 3
+      body:
+        - {type: transform, action: pick, input_key: critique, field: issues, output_key: issues, raw: true}
+        - type: map
+          input_keys: [issues]
+          output_key: fixes
+          max_concurrency: 2
+          processor:
+            type: llm_chat
+            provider: ollama
+            model: llama3.1:8b
+            system: "You fix exactly one code issue. Reply with only the corrected code."
+            prompt: "Issue: {issues}\n\nCode:\n{code}"
+            output_key: fix
+        - {type: transform, action: join, input_key: fixes, sep: "\n\n", output_key: fixes_text}
+        - type: llm_chat
+          provider: ollama
+          model: llama3.1:8b
+          system: >-
+            You apply the reviewer's fixes to the existing code and reply
+            with the full corrected code.
+          prompt: "Fixes:\n{fixes_text}\n\nCurrent code:\n{code}"
+          output_key: code
+        - type: llm_chat
+          provider: ollama
+          model: llama3.1:8b
+          system: >-
+            You are a strict code reviewer. Return a single JSON object:
+            {{ "verdict": "pass" or "needs_work", "issues": [list of problems to fix] }}.
+          prompt: "Review the corrected code:\n\n{code}\n\nReply with JSON."
+          output_key: critique
+          parse: true
+        - {type: transform, action: json_get, input_key: critique, field: verdict, output_key: verdict}
+
+  - id: approve
+    type: interrupt
+    config:
+      key: approved
+      prompt: "Отправить код в работу? (approve / отлично / ok — да; любое другое — на доработку)"
+      strategy:
+        any_of: [approve, отлично, ok]
+        decision_key: decision
+        pass_value: approve
+        fail_value: rework
+
+  - id: deliver
+    type: command
+    config:
+      routes:
+        - {when: "decision=approve", goto: final}
+        - {when: "decision=rework", goto: refine}
+      goto: STOP
+
+  - id: final
+    type: transform
+    config:
+      action: now
+      output_key: delivered_at
+
+edges:
+  - {from: supervisor, to: planner, condition: "next_agent=planner"}
+  - {from: supervisor, to: coder, condition: "next_agent=coder"}
+  - {from: supervisor, to: review_quality, condition: "next_agent=finish"}
+  - {from: planner, to: supervisor}
+  - {from: coder, to: supervisor}
+  - {from: review_quality, to: extract_verdict}
+  - {from: extract_verdict, to: route}
+  - {from: refine, to: approve}
+  - {from: approve, to: deliver}

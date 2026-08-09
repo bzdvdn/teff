@@ -1,0 +1,39 @@
+name: map-repair-plans
+description: >
+  Fans out a list of repair jobs into parallel LLM calls.  Each call
+  reads two state keys (type, summ) into one prompt via {key} templates,
+  and results are collected into the plans list.  Requires Ollama with
+  llama3.1:8b.
+
+state:
+  schema:
+    plans:
+      reducer: append
+      type: list
+  initial:
+    type: ["кухни", "санузел", "балкона"]
+    summ: [150000, 80000, 45000]
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+steps:
+  - id: plans
+    type: map
+    config:
+      input_keys: [type, summ]
+      output_key: plans
+      max_concurrency: 2
+      processor:
+        type: llm_chat
+        provider: ollama
+        model: llama3.1:8b
+        system: >
+          Ты инженер по ремонту. Составь краткий план работ по заданию
+          клиента. Отвечай по-русски, 3-5 пунктов.
+        prompt: "Составь план для ремонта {type} на сумму {summ} рублей."
+        output_key: plan
+
+edges: []

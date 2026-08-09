@@ -53,7 +53,7 @@ stores-lance = [
     "lancedb>=0.26",
 ]
 stores-milvus = [
-    "pymilvus>=2.4",
+    "pymilvus[milvus_lite]>=2.4",
 ]
 stores-weaviate = [
     "weaviate-client>=4.4",

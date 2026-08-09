@@ -1,0 +1,57 @@
+name: channels_demo
+description: >-
+  One workflow.yaml reachable over every transport — HTTP/SSE chat, a generic
+  JSON webhook, and a Telegram bot.  The channels: block is the single source
+  of truth for which adapters run; the graph itself is a plain summarizer.
+
+state:
+  schema:
+    messages:
+      reducer: append
+      type: list
+  initial:
+    messages: []
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
+checkpoint:
+  type: file
+  path: data/checkpoints
+
+channels:
+  server:
+    host: 127.0.0.1
+    port: 8000
+  telegram:
+    token_env: TELEGRAM_BOT_TOKEN
+    mode: polling
+  webhook:
+    - path: /hooks/summarize
+      schema:
+        type: object
+        properties:
+          text:
+            type: string
+        required: [text]
+      input:
+        message: "сделай краткое резюме: {text}"
+      session_key: text
+      owner: "header.X-User-Id"
+
+steps:
+  - id: summarize
+    type: llm_chat
+    config:
+      system: |-
+        You are a concise summarizer.
+        Reply with the summary only; no preamble.
+      model: llama3.1:8b
+      provider: ollama
+      output_key: answer
+      messages_key: messages
+
+edges: []

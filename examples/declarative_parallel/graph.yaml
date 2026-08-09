@@ -1,0 +1,34 @@
+name: declarative-parallel
+description: >
+  Parallel fan-out expressed entirely in YAML — no Python. One input is
+  processed by three concurrent branches (each an isolated state copy);
+  their results merge back into state via the default override reducers,
+  then a final transform closes the run.
+
+  Run: teff run --file workflow.yaml
+state:
+  initial:
+    text: "  hello teff  "
+
+steps:
+  - id: fanout
+    type: parallel
+    config:
+      branches:
+        - type: transform
+          config: {action: uppercase, input_key: text, output_key: upper}
+        - type: transform
+          config: {action: count_lines, input_key: text, output_key: lines}
+        - type: transform
+          config: {action: trim, input_key: text, output_key: trimmed}
+
+  - id: report
+    type: transform
+    config:
+      action: value
+      value: done
+      output_key: status
+
+edges:
+  - from: fanout
+    to: report

@@ -1,0 +1,53 @@
+name: rag-pgvector
+description: >
+  RAG over the Teff knowledge base (docs.csv) using the PostgreSQL +
+  pgvector store. Requires `teff[stores-pgvector]` (asyncpg + sqlalchemy) and a
+  running PostgreSQL with the pgvector extension.
+
+tools:
+  - type: rag
+    config:
+      embedder:
+        provider: ollama
+        model: nomic-embed-text
+      store:
+        type: pgvector
+        dsn: postgresql://postgres:postgres@localhost:5433/postgres
+        table: teff_vectors
+      documents:
+        - type: csv
+          path: ../docs.csv
+
+state:
+  initial:
+    query: What is the mascot of Teff, and what does it ride?
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+steps:
+  - id: agent
+    type: react_agent
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >
+        You are a RAG assistant over the Teff knowledge base. Always call
+        the 'rag' tool to search before answering, and answer strictly
+        from the retrieved snippets.
+      input_key: query
+      output_key: answer
+
+  - id: tool_exec
+    type: tool_exec
+    config:
+      messages_key: messages
+
+edges:
+  - from: agent
+    to: tool_exec
+    condition: _tool_call_name!=
+  - from: tool_exec
+    to: agent

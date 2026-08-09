@@ -1,0 +1,39 @@
+name: plugins-demo
+description: >
+  Folder-based plugins.  The `plugins/` directory next to this file
+  registers three custom node types (`slugify_node`, `word_count_node`,
+  `format_json`) and two custom tool types (`slugify`, `word_count`).
+  No network, no API key - run it with `python examples/plugins/run.py`.
+
+state:
+  initial:
+    body: "  hello world, teff plugins  "
+
+tools:
+  - type: slugify
+  - type: word_count
+
+steps:
+  - id: slug
+    type: slugify_node
+    config:
+      input_key: body
+      output_key: slug
+
+  - id: count
+    type: word_count_node
+    config:
+      input_key: body
+      output_key: count
+
+  - id: format
+    type: format_json
+    config:
+      keys: [slug, count]
+      output_key: report
+
+edges:
+  - from: slug
+    to: count
+  - from: count
+    to: format

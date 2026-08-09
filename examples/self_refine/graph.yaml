@@ -1,0 +1,86 @@
+name: self_refine
+description: >
+  Self-refine loop (the classic reflection pattern) expressed as pure YAML —
+  no graph-building code.  The LLM drafts a text, a critic returns a JSON
+  review, and the draft is rewritten until the critic approves:
+
+    draft -> critic -> extract
+                        |-- verdict=pass   --> final
+                        |-- verdict!=pass  --> fix -> critic
+
+  Runs offline-friendly: pipe a scripted LLM (see main.py for the Flow-API
+  twin and the mocked transport) or point it at Ollama.
+
+state:
+  initial:
+    topic: why I love Python
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+steps:
+  - id: draft
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: You are a concise, punchy blog writer.
+      prompt: Write a short blog post about {topic}.
+      output_key: draft
+
+  - id: critic
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a strict blog editor. Review the draft and respond with a
+        single JSON object:
+        {{"verdict": "pass" or "needs_work", "issues": [list of short problems to fix]}}.
+      prompt: "Review the draft:\n\n{draft}\n\nRespond with JSON."
+      output_key: critique
+      parse: true
+
+  - id: extract
+    type: transform
+    config:
+      action: json_get
+      input_key: critique
+      field: verdict
+      output_key: verdict
+
+  - id: fix
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a concise blog writer. Rewrite the draft addressing every
+        issue the editor listed. Keep the same topic, fix the problems.
+      prompt: "Rewrite the draft addressing these issues: {critique}\n\nDraft:\n{draft}"
+      output_key: draft
+
+  - id: final
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: You are a concise blog writer. Produce the final, polished version of the text.
+      prompt: "Produce the final, polished version of this draft:\n{draft}"
+      output_key: final
+
+edges:
+  - from: draft
+    to: critic
+  - from: critic
+    to: extract
+  - from: extract
+    to: final
+    condition: verdict=pass
+  - from: extract
+    to: fix
+    condition: verdict!=pass
+  - from: fix
+    to: critic

@@ -1,0 +1,124 @@
+name: channels_rag_ingest
+description: >-
+  A knowledge base you grow from any channel.  Send CSV rows (e.g. from
+  Telegram, a webhook, or the terminal), the workflow normalizes each row
+  through an LLM into one clean text paragraph, then `rag_ingest` chunks,
+  embeds and stores it.  A later `rag` search answers from everything
+  ingested so far.
+
+  Pipeline per turn:
+    1. llm_chat: turn the raw payload into clean document text (a
+       llm_chat step, so the parse step is explicit and swappable).
+    2. tool_call -> rag_ingest: chunk + embed + store the result.
+    3. llm_chat: confirm and, optionally, answer from the store.
+
+  Requires Ollama: llama3.1:8b + nomic-embed-text.
+
+  Run any transport:
+
+      teff chat  examples/channels/rag_ingest/workflow.yaml
+      teff serve examples/channels/rag_ingest/workflow.yaml --port 8000
+      TELEGRAM_BOT_TOKEN=... teff bot examples/channels/rag_ingest/workflow.yaml
+
+  Ingest over the webhook:
+
+      curl -X POST localhost:8000/hooks/ingest \
+        -H 'Content-Type: application/json' -H 'X-User-Id: alice' \
+        -d '{"row": "sku=A-1|product=Ванна|desc=Чугунная ванна 170 см"}'
+
+  Then ask (any channel): "Какие ванны есть в каталоге?" — the answer
+  comes from the vectors written above.
+
+state:
+  schema:
+    messages:
+      reducer: append
+      type: list
+  initial:
+    messages: []
+    row: ""
+    doc_text: ""
+    ingest_result: ""
+    answer: ""
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
+checkpoint:
+  type: file
+  path: data/checkpoints
+
+channels:
+  server:
+    host: 127.0.0.1
+    port: 8000
+  telegram:
+    token_env: TELEGRAM_BOT_TOKEN
+    mode: polling
+  webhook:
+    - path: /hooks/ingest
+      schema:
+        type: object
+        properties:
+          row:
+            type: string
+        required: [row]
+      input:
+        message: "{row}"
+      session_key: row
+      owner: "header.X-User-Id"
+
+tools:
+  - type: rag_ingest
+    config:
+      embedder:
+        provider: ollama
+        model: nomic-embed-text
+      store:
+        type: sqlite
+        path: data/vectors.db
+        dim: 768
+
+steps:
+  # 1. Normalize the raw row into clean document text with the LLM.
+  - id: normalize
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: |-
+        You turn one product row into ONE clean, factual catalog paragraph in
+        Russian. Write it exactly once — no repetition, no preamble, no bullet
+        points. Keep every field from the row (sku, name, description, price...).
+        Output only the paragraph.
+      prompt: "Product row:\n{row}\n\nWrite the catalog paragraph:"
+      output_key: doc_text
+      messages_key: messages
+
+  # 2. Write it into the vector store (chunk + embed + persist).
+  - id: ingest
+    type: tool_call
+    config:
+      tool: rag_ingest
+      args:
+        text: "{doc_text}"
+      output_key: ingest_result
+      on_error: message
+
+  # 3. Confirm what was stored.
+  - id: confirm
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: "Reply in one short sentence confirming the row was added to the knowledge base."
+      prompt: "ingested: {ingest_result}\n\nrow: {row}"
+      output_key: answer
+      messages_key: messages
+
+edges:
+  - {from: normalize, to: ingest}
+  - {from: ingest, to: confirm}

@@ -1,0 +1,23 @@
+name: durable-file
+plugins: [../failing.py]
+checkpoint:
+  type: file
+  path: ./checkpoints
+  checkpoint_id: demo-run
+state:
+  initial:
+    text: durable
+steps:
+  - id: shout
+    type: transform
+    config: {action: uppercase, input_key: text, output_key: shout}
+  - id: fail
+    type: failing
+  - id: done
+    type: transform
+    config: {action: value, value: finished, output_key: status}
+edges:
+  - from: shout
+    to: fail
+  - from: fail
+    to: done

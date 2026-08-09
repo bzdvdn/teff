@@ -1,0 +1,125 @@
+name: plan_and_execute
+description: >
+  Plan-and-execute as pure YAML — no graph-building code.  An LLM plans a
+  JSON object of steps, a Map fans them out to parallel executors, and a
+  reviewer decides whether to accept or send control back to the planner:
+
+    planner -> extract_steps -> [map] execute -> reviewer -> extract
+                                                          |-- verdict=pass   --> final
+                                                          |-- verdict!=pass  --> replan -> extract_steps -> [map] execute
+
+  The planner/reviewer nodes use `parse: true` so their JSON responses are
+  parsed into state before the transforms extract the steps array and the
+  verdict string.
+
+state:
+  initial:
+    goal: launch a blog about Python
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+steps:
+  - id: planner
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a project planner. Respond with a single JSON object of the
+        form {{"steps": ["step 1", "step 2", ...]}} with 2-3 concise step
+        strings. No prose, only the JSON object.
+      prompt: "Plan a short list of steps to achieve: {goal}"
+      output_key: steps_obj
+      parse: true
+
+  - id: extract_steps
+    type: transform
+    config:
+      action: json_get
+      input_key: steps_obj
+      field: steps
+      output_key: steps
+      raw: true
+
+  - id: execute
+    type: map
+    config:
+      input_keys: [steps]
+      output_key: results
+      max_concurrency: 2
+      processor:
+        type: llm_chat
+        provider: ollama
+        model: llama3.1:8b
+        system: You are a step executor. Execute the single step and report what you did.
+        prompt: "Execute this step: {steps}"
+        output_key: result
+
+  - id: reviewer
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a quality reviewer. Review the step results and respond with
+        a single JSON object:
+        {{"verdict": "pass" or "needs_work", "feedback": "one short sentence"}}.
+      prompt: "Review the results:\n\n{results}\n\nRespond with JSON."
+      output_key: review
+      parse: true
+
+  - id: extract
+    type: transform
+    config:
+      action: json_get
+      input_key: review
+      field: verdict
+      output_key: verdict
+
+  - id: replan
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a project planner. Respond with a single JSON object of the
+        form {{"steps": ["step 1", "step 2", ...]}} with 2-3 concise step
+        strings. No prose, only the JSON object.
+      prompt: >-
+        Plan a short list of steps to achieve: {goal}
+
+        The reviewer said: {review}
+
+        Respond with a revised JSON object.
+      output_key: steps_obj
+      parse: true
+
+  - id: final
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: You are the delivery lead. Summarize the completed work into a short report.
+      prompt: "Summarize the outcome:\n\nResults: {results}"
+      output_key: final
+
+edges:
+  - from: planner
+    to: extract_steps
+  - from: extract_steps
+    to: execute
+  - from: execute
+    to: reviewer
+  - from: reviewer
+    to: extract
+  - from: extract
+    to: final
+    condition: verdict=pass
+  - from: extract
+    to: replan
+    condition: verdict!=pass
+  - from: replan
+    to: extract_steps

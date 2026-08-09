@@ -1,0 +1,89 @@
+name: compose-everything
+description: >
+  A pure-YAML workflow (no API key) combining every pipeline-building block:
+  an `include:` from another file, the new `transform` actions (split,
+  contains, compare, replace, coalesce, join, to_int, now), a `loop` that
+  retries until a condition holds, and a `command` step for dynamic goto/STOP
+  routing — all driven from state.
+
+  Low-level graph view: the ``shared_`` steps below are the inline expansion
+  of ``include: [{path: ./shared_metrics.yaml, prefix: shared_}]`` from the
+  authoring layer, spelled out so this file stays a pure ``steps``/``edges``
+  graph with no includes.
+
+state:
+  initial:
+    raw: "alpha,beta,urgent,gamma"
+    attempts: "0"
+
+steps:
+  - id: shared_split_items
+    type: transform
+    config:
+      action: split
+      input_key: raw
+      sep: ","
+      output_key: items
+
+  - id: shared_flag_keyword
+    type: transform
+    config:
+      action: contains
+      input_key: raw
+      value: urgent
+      output_key: has_urgent
+
+  - id: route
+    type: command
+    config:
+      routes:
+        - {when: "has_urgent=true", goto: countdown}
+        - {when: "has_urgent=false", goto: quiet}
+      goto: STOP
+      update: {routed: true}
+
+  - id: countdown
+    type: loop
+    config:
+      key: attempts
+      until: "3"
+      max_rounds: 5
+      body:
+        - {type: transform, action: to_int, input_key: attempts, output_key: n}
+        - {type: transform, action: replace, input_key: raw, old: "urgent", new: "p2", output_key: raw}
+
+  - id: quiet
+    type: transform
+    config:
+      action: value
+      value: "no-urgent-items"
+      output_key: summary
+
+  - id: report
+    type: transform
+    config:
+      action: join
+      input_key: items
+      sep: " + "
+      output_key: joined
+
+  - id: stamp
+    type: transform
+    config:
+      action: now
+      output_key: generated_at
+
+edges:
+  - from: shared_split_items
+    to: shared_flag_keyword
+  - from: shared_flag_keyword
+    to: route
+  - from: route
+    to: report
+    condition: "routed=true"
+  - from: countdown
+    to: report
+  - from: quiet
+    to: report
+  - from: report
+    to: stamp

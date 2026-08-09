@@ -1,0 +1,129 @@
+name: repo-health
+description: >
+  A repository health / change-triage daemon built on the workflow's
+  coordination tools.  Each tick runs entirely through the CLI daemon mode
+  (no per-app Python):
+
+      REDIS_URL=... TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=... \
+      teff daemon -f workflow.yaml --interval 300
+
+  The agent is the driver: it takes a distributed lock (so two instances
+  never run the same tick), reads a priority table from a CSV, inspects the
+  working tree with git (status/log), cross-references changed files against
+  the CSV to decide what needs attention, de-duplicates alerts in redis,
+  waits for a maintenance-window signal (wait_for redis_key), and sends a
+  single Telegram summary.  `lock` and `redis` talk to any RESP server
+  (Redis, KeyDB, Valkey).
+
+  Config notes:
+    - `git` tool `path` points at the repository root to watch (run the
+      daemon from that directory, or use an absolute path).
+    - `csv_query` tool `path` points at the priority table
+      (`data/priority.csv`: `file,owner,priority`).
+    - `lock`/`redis`/`wait_for` share the same `REDIS_URL`.
+
+tools:
+  - type: git
+    config:
+      path: "."
+  - type: csv_query
+    config:
+      path: "data/priority.csv"
+  - type: redis
+    config:
+      url: "${REDIS_URL}"
+  - type: lock
+    config:
+      url: "${REDIS_URL}"
+  - type: wait_for
+    config:
+      url: "${REDIS_URL}"
+      poll_interval: 2
+      timeout: 120
+  - type: send_telegram
+    config:
+      token: "${TELEGRAM_BOT_TOKEN}"
+      chat_id: "${TELEGRAM_CHAT_ID}"
+
+state:
+  initial:
+    priority_csv: "data/priority.csv"
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+steps:
+  - id: reset
+    type: context_builder
+    config:
+      sections:
+        priority_csv: "File priority table (CSV: file,owner,priority)"
+      messages_key: messages
+      output_key: input
+      reset_keys: [messages, _tool_call_name, _tool_calls]
+
+  - id: agent
+    type: react_agent
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >
+        You are a repository-health agent running as a daemon.  One tick
+        checks one repository (the git tool's `path`), reports on it, and
+        stops — the daemon re-runs you every interval.
+
+        The "File priority table" section gives the CSV path
+        (`data/priority.csv`, columns `file,owner,priority`).  Follow this
+        order:
+
+        1. Take the tick lock: call lock with action=acquire, key=daemon:tick,
+           ttl=300.  If it says "held by someone else", another instance is
+           running this tick — stop immediately without sending anything.
+        2. Read the priority table: csv_query action=read.  Remember the
+           columns (file, owner, priority).
+        3. Inspect the repository with git:
+           - git action=status — are there uncommitted changes?
+           - git action=log limit=5 — recent commits.
+        4. For each changed file, look up its owner and priority in the
+           priority table (csv_query action=filter column=file value=<file>).
+           Files marked high or medium priority are "attention items".
+        5. De-duplicate alerts in redis: for each attention item, check
+           redis action=exists key=alerted:<file>.  If it exists, skip it;
+           otherwise redis action=set key=alerted:<file> value=1 ttl=86400
+           and include it in the report.
+        6. Wait for the maintenance window: wait_for condition=redis_key
+           target=deploy:ready timeout=120.  If it reports "timed out",
+           do NOT fail — just note in the report that the window was not
+           open.
+        7. Send ONE send_telegram summary containing: the git status of the
+           repo, the recent commits (git log), the list of new attention
+           items with their owners, and whether the maintenance window was
+           open.  If there was nothing new, send a short heartbeat line.
+        8. Release the tick lock only if you acquired it in step 1: lock
+           action=release key=daemon:tick.  Releasing a lock you do not own
+           is harmless (it is refused) but unnecessary.
+
+        Pass every argument explicitly; tool results come back as messages
+        you can read.  Be conservative and do not invent files that git
+        status did not report.
+      input_key: input
+      output_key: summary
+      messages_key: messages
+      use_tools: all
+
+  - id: tool_exec
+    type: tool_exec
+    config:
+      messages_key: messages
+      use_tools: all
+
+edges:
+  - from: reset
+    to: agent
+  - from: agent
+    to: tool_exec
+    condition: _tool_call_name!=
+  - from: tool_exec
+    to: agent

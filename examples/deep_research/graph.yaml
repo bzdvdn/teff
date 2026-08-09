@@ -1,0 +1,174 @@
+name: deep_research
+description: >
+  Deep research as pure YAML — no graph-building code.  An LLM planner
+  breaks the topic into research questions, a ReAct agent searches the web
+  (web_search) and reads pages (fetch_url), then a writer synthesizes the
+  report and a reviewer either accepts it or sends it back for revision:
+
+    planner -> extract_topics -> research_agent <-> tool_exec (web_search, fetch_url)
+                    |
+                    v
+    writer -> reviewer -> extract
+                            |-- verdict=pass   --> final
+                            |-- verdict!=pass  --> fix -> reviewer
+
+  The reviewer uses `output_type`/parse so its JSON verdict lands in state
+  before the transform extracts the verdict string.  Requires Ollama
+  (llama3.1:8b) and network access for the search/fetch tools.
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
+state:
+  initial:
+    topic: launching a personal blog in 2026
+
+tools:
+  - type: web_search
+    config:
+      provider: ollama
+  - type: fetch_url
+    config:
+      provider: ollama
+
+steps:
+  - id: planner
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a research planner. Respond with a single JSON object of the
+        form {{"topics": ["question 1", "question 2", ...]}} with 2-3
+        specific research questions to answer. No prose, only the JSON object.
+      prompt: "Break this into 2-3 research questions: {topic}"
+      output_key: topics_obj
+      json_schema:
+        type: object
+        properties:
+          topics:
+            type: array
+            items:
+              type: string
+            minItems: 1
+        required: [topics]
+        additionalProperties: false
+
+  - id: extract_topics
+    type: transform
+    config:
+      action: json_get
+      input_key: topics_obj
+      field: topics
+      output_key: topics
+      raw: true
+
+  - id: research_agent
+    type: react_agent
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a web research agent. Use the web_search tool to search and
+        the fetch_url tool to read pages until you can answer the user's
+        questions, then reply with a short notes summary of your findings.
+      input_key: topics
+      output_key: notes
+
+  - id: tool_exec
+    type: tool_exec
+    config:
+      messages_key: messages
+
+  - id: writer
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a research writer. Turn the research notes into a clear,
+        well-structured report with sections and concrete facts.
+      prompt: "Write a report from these research notes:\n\n{notes}"
+      output_key: report
+
+  - id: reviewer
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a strict research editor. Review the report and respond with
+        a single JSON object:
+        {{"verdict": "pass" or "needs_work", "feedback": "one short sentence"}}.
+      prompt: "Review the report:\n\n{report}\n\nRespond with JSON."
+      output_key: critique
+      output_type:
+        type: object
+        properties:
+          verdict:
+            type: string
+          feedback:
+            type: string
+        required: [verdict, feedback]
+        additionalProperties: false
+
+  - id: extract
+    type: transform
+    config:
+      action: json_get
+      input_key: critique
+      field: verdict
+      output_key: verdict
+
+  - id: fix
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are a research writer. Turn the research notes into a clear,
+        well-structured report with sections and concrete facts.
+      prompt: >-
+        Rewrite the report addressing the editor's feedback: {critique}
+
+        Report:
+        {report}
+      output_key: report
+
+  - id: final
+    type: llm_chat
+    config:
+      provider: ollama
+      model: llama3.1:8b
+      system: >-
+        You are the research lead. Produce the final polished research summary.
+      prompt: "Produce the final polished research summary from this report:\n{report}"
+      output_key: final
+
+edges:
+  - from: planner
+    to: extract_topics
+  - from: extract_topics
+    to: research_agent
+  - from: research_agent
+    to: tool_exec
+    condition: _tool_call_name!=
+  - from: tool_exec
+    to: research_agent
+  - from: research_agent
+    to: writer
+  - from: writer
+    to: reviewer
+  - from: reviewer
+    to: extract
+  - from: extract
+    to: final
+    condition: verdict=pass
+  - from: extract
+    to: fix
+    condition: verdict!=pass
+  - from: fix
+    to: reviewer
