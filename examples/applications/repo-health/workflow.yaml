@@ -55,20 +55,8 @@ providers:
     base_url: http://localhost:11434
     chat_path: /api/chat
 steps:
-  - id: reset
-    type: context_builder
-    config:
-      sections:
-        priority_csv: "File priority table (CSV: file,owner,priority)"
-      messages_key: messages
-      output_key: input
-      reset_keys: [messages, _tool_call_name, _tool_calls]
-
-  - id: agent
-    type: react_agent
-    config:
-      provider: ollama
-      model: llama3.1:8b
+  - agent_step:
+      id: agent
       system: >
         You are a repository-health agent running as a daemon.  One tick
         checks one repository (the git tool's `path`), reports on it, and
@@ -108,22 +96,9 @@ steps:
         Pass every argument explicitly; tool results come back as messages
         you can read.  Be conservative and do not invent files that git
         status did not report.
-      input_key: input
+      sections:
+        priority_csv: "File priority table (CSV: file,owner,priority)"
       output_key: summary
-      messages_key: messages
       use_tools: all
-
-  - id: tool_exec
-    type: tool_exec
-    config:
-      messages_key: messages
-      use_tools: all
-
-edges:
-  - from: reset
-    to: agent
-  - from: agent
-    to: tool_exec
-    condition: _tool_call_name!=
-  - from: tool_exec
-    to: agent
+      model: llama3.1:8b
+      provider: ollama

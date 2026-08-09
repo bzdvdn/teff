@@ -16,14 +16,5 @@ state:
     text: "  hello  "
 
 steps:
-  - id: trim
-    type: transform
-    config: {action: trim, input_key: text, output_key: clean}
-
-  - id: shout
-    type: transform
-    config: {action: uppercase, input_key: clean, output_key: shout}
-
-edges:
-  - from: trim
-    to: shout
+  - transform: {id: trim, action: trim, input_key: text, output_key: clean}
+  - transform: {id: shout, action: uppercase, input_key: clean, output_key: shout}

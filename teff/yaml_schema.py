@@ -222,7 +222,9 @@ FLOW_IDIOMS = (
     "map",
     "loop",
     "interrupt",
+    "branch",
     "route",
+    "type",
 )
 
 
@@ -500,6 +502,11 @@ def format_errors(errors: list[dict], *, source: str = "workflow") -> str:
 def validate_workflow_file(path: str) -> list[dict]:
     """Validate a workflow YAML file on disk.
 
+    Auto-detects the document layer: a ``flow.yaml``-style document (the
+    sugar idiom surface) is validated against the flow schema via
+    :func:`validate_flow_file`; a low-level graph document is validated
+    against the graph schema via :func:`validate_workflow`.
+
     Loads any plugins referenced by the ``plugins`` key (or the default
     ``plugins/`` folder) and resolves ``include:`` blocks the same way
     :func:`teff.yaml.load_workflow` does, so custom node/tool types and
@@ -516,6 +523,10 @@ def validate_workflow_file(path: str) -> list[dict]:
     from teff.plugins import load_plugins_from_document
 
     load_plugins_from_document(data, os.path.dirname(os.path.abspath(path)))
+    from teff.flow.compiler import looks_like_flow
+
+    if looks_like_flow(data):
+        return validate_flow(data)
     return validate_workflow(data)
 
 

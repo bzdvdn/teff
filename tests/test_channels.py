@@ -47,15 +47,13 @@ def workflow(tmp_path: Path) -> Path:
               type: file
               path: {tmp_path / "cp"}
             steps:
-              - id: reply
-                type: llm_chat
-                config:
+              - llm:
+                  id: reply
                   system: "Reply with one word."
                   model: llama3.1:8b
                   provider: ollama
                   output_key: answer
                   messages_key: messages
-            edges: []
             """
         ),
         encoding="utf-8",
@@ -220,12 +218,10 @@ class TestHTTPChannel:
                   type: file
                   path: {tmp_path / "cpg"}
                 steps:
-                  - id: ask
-                    type: interrupt
-                    config:
+                  - interrupt:
+                      id: ask
                       prompt: "Approve?"
                       key: approved
-                edges: []
                 """
             ),
             encoding="utf-8",

@@ -266,8 +266,8 @@ class TestGitlabReviewerExample:
             "send_telegram",
             "kv_store",
         } <= names
-        assert graph.entry_point == "reset"
-        assert {"reset", "reviewer", "tool_exec"} <= set(graph.nodes)
+        assert graph.entry_point == "agent-reviewer"
+        assert set(graph.nodes) == {"agent-reviewer"}
         assert initial["project_ids"] == ["group/repo1", "group/repo2"]
 
     def test_example_validates(self):
@@ -293,8 +293,8 @@ class TestGithubReviewerExample:
             "send_telegram",
             "kv_store",
         } <= names
-        assert graph.entry_point == "reset"
-        assert {"reset", "reviewer", "tool_exec"} <= set(graph.nodes)
+        assert graph.entry_point == "agent-reviewer"
+        assert set(graph.nodes) == {"agent-reviewer"}
         assert initial["repo_ids"] == ["owner/repo1", "owner/repo2"]
 
     def test_example_validates(self):
@@ -317,8 +317,8 @@ class TestRepoHealthExample:
             "wait_for",
             "send_telegram",
         } <= names
-        assert graph.entry_point == "reset"
-        assert {"reset", "agent", "tool_exec"} <= set(graph.nodes)
+        assert graph.entry_point == "agent-agent"
+        assert set(graph.nodes) == {"agent-agent"}
         assert initial["priority_csv"] == "data/priority.csv"
 
     def test_example_validates(self):

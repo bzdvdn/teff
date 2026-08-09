@@ -458,6 +458,86 @@ class TestComplexIdioms:
                 )
             )
 
+    def test_branch_compiles_conditional_edges_and_converge(self):
+        g = compile_doc(
+            textwrap.dedent(
+                """
+                name: br
+                steps:
+                  - transform: {action: value, value: ok, output_key: status}
+                  - branch:
+                      key: status
+                      cases:
+                        - value: ok
+                          steps:
+                            - transform: {action: value, value: yes,
+                                          output_key: reply}
+                        - value: "no"
+                          steps:
+                            - transform: {action: value, value: nope,
+                                          output_key: reply}
+                      converge:
+                        transform: {action: uppercase, input_key: reply,
+                                    output_key: result}
+                """
+            )
+        )
+        conds = {e.condition for e in g.edges if e.condition}
+        assert "status=ok" in conds
+        assert "status=no" in conds
+        converge = [e for e in g.edges if e.target_id != g.entry_point]
+        assert any(e.condition is None for e in converge)
+
+    def test_branch_default_edge(self):
+        g = compile_doc(
+            textwrap.dedent(
+                """
+                name: brd
+                steps:
+                  - transform: {action: value, value: "2", output_key: lines}
+                  - branch:
+                      key: lines
+                      cases:
+                        - value: "1"
+                          steps:
+                            - transform: {action: value, value: single,
+                                          output_key: note}
+                      default:
+                        - transform: {action: value, value: multi,
+                                      output_key: note}
+                """
+            )
+        )
+        conds = {e.condition for e in g.edges if e.condition}
+        assert "lines=1" in conds
+        assert "lines!=1" in conds
+
+    def test_branch_missing_key_raises(self):
+        with pytest.raises(ConfigError, match="branch requires a `key`"):
+            compile_doc(
+                textwrap.dedent(
+                    """
+                name: brk
+                steps:
+                  - transform: {action: value, value: x, output_key: k}
+                  - branch: {cases: [{value: x, steps: [{transform: {action: value}}]}]}
+                """
+                )
+            )
+
+    def test_branch_empty_cases_raises(self):
+        with pytest.raises(ConfigError, match="cases"):
+            compile_doc(
+                textwrap.dedent(
+                    """
+                name: brc
+                steps:
+                  - transform: {action: value, value: x, output_key: k}
+                  - branch: {key: k, cases: []}
+                """
+                )
+            )
+
     def test_parallel_missing_branches_raises(self):
         with pytest.raises(ConfigError, match="branches"):
             compile_doc(

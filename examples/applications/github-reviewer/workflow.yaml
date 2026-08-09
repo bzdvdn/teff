@@ -51,20 +51,8 @@ providers:
     base_url: http://localhost:11434
     chat_path: /api/chat
 steps:
-  - id: reset
-    type: context_builder
-    config:
-      sections:
-        repo_ids: "Repositories to review"
-      messages_key: messages
-      output_key: input
-      reset_keys: [messages, _tool_call_name, _tool_calls]
-
-  - id: reviewer
-    type: react_agent
-    config:
-      provider: ollama
-      model: llama3.1:8b
+  - agent_step:
+      id: reviewer
       system: >
         You are an automated GitHub code reviewer running as a daemon.
 
@@ -90,22 +78,9 @@ steps:
 
         Pass the repo to every github tool call.  Be conservative: only
         auto-approve genuinely trivial changes.
-      input_key: input
+      sections:
+        repo_ids: "Repositories to review"
       output_key: review_summary
-      messages_key: messages
       use_tools: all
-
-  - id: tool_exec
-    type: tool_exec
-    config:
-      messages_key: messages
-      use_tools: all
-
-edges:
-  - from: reset
-    to: reviewer
-  - from: reviewer
-    to: tool_exec
-    condition: _tool_call_name!=
-  - from: tool_exec
-    to: reviewer
+      model: llama3.1:8b
+      provider: ollama

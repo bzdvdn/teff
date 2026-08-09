@@ -22,38 +22,15 @@ state:
     chapters: []
 
 steps:
-  - id: setup
-    type: transform
-    config:
-      action: append
-      template: "Chapter 1: A hero named {hero} sets out."
-      output_key: chapters
-
-  - id: conflict
-    type: transform
-    config:
-      action: append
-      template: "Chapter 2: They come to the town of {setting}."
-      output_key: chapters
-
-  - id: twist
-    type: transform
-    config:
-      action: append
-      template: "Chapter 3: The twist: {twist}!"
-      output_key: chapters
-
-  - id: ending
-    type: transform
-    config:
-      action: append
-      template: "Chapter 4: And so the tale of {hero} ends."
-      output_key: chapters
-
-edges:
-  - from: setup
-    to: conflict
-  - from: conflict
-    to: twist
-  - from: twist
-    to: ending
+  - transform: {id: setup, action: append,
+                template: "Chapter 1: A hero named {hero} sets out.",
+                output_key: chapters}
+  - transform: {id: conflict, action: append,
+                template: "Chapter 2: They come to the town of {setting}.",
+                output_key: chapters}
+  - transform: {id: twist, action: append,
+                template: "Chapter 3: The twist: {twist}!",
+                output_key: chapters}
+  - transform: {id: ending, action: append,
+                template: "Chapter 4: And so the tale of {hero} ends.",
+                output_key: chapters}

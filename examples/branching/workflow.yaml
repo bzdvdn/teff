@@ -19,46 +19,26 @@ providers:
     base_url: http://localhost:11434
     chat_path: /api/chat
 steps:
-  - id: classify
-    type: llm_chat
-    config:
-      provider: ollama
+  - llm:
+      id: classify
       model: llama3.1:8b
+      provider: ollama
       system: >
         Classify the sentiment of the user's text. Respond with
         exactly one word: "positive" or "negative".
       input_key: text
       output_key: sentiment
-
-  - id: on_positive
-    type: transform
-    config:
-      action: value
-      value: "Glad you liked it! "
-      output_key: reply
-
-  - id: on_negative
-    type: transform
-    config:
-      action: value
-      value: "Sorry to hear that. "
-      output_key: reply
-
-  - id: shout
-    type: transform
-    config:
-      action: uppercase
-      input_key: reply
-      output_key: result
-
-edges:
-  - from: classify
-    to: on_positive
-    condition: sentiment=positive
-  - from: classify
-    to: on_negative
-    condition: sentiment=negative
-  - from: on_positive
-    to: shout
-  - from: on_negative
-    to: shout
+  - branch:
+      key: sentiment
+      cases:
+        - value: positive
+          steps:
+            - transform: {id: on_positive, action: value,
+                          value: "Glad you liked it! ", output_key: reply}
+        - value: negative
+          steps:
+            - transform: {id: on_negative, action: value,
+                          value: "Sorry to hear that. ", output_key: reply}
+      converge:
+        transform: {id: shout, action: uppercase, input_key: reply,
+                    output_key: result}

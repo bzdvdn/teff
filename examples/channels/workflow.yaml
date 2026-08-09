@@ -12,6 +12,9 @@ state:
   initial:
     messages: []
 
+default_provider: ollama
+default_model: llama3.1:8b
+
 providers:
   - name: ollama
     type: ollama
@@ -43,15 +46,10 @@ channels:
       owner: "header.X-User-Id"
 
 steps:
-  - id: summarize
-    type: llm_chat
-    config:
+  - llm:
+      id: summarize
       system: |-
         You are a concise summarizer.
         Reply with the summary only; no preamble.
-      model: llama3.1:8b
-      provider: ollama
       output_key: answer
       messages_key: messages
-
-edges: []

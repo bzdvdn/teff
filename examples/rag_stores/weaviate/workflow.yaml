@@ -1,8 +1,6 @@
 name: rag-weaviate
 description: >
-  RAG over the Teff knowledge base (docs.csv) using the Weaviate store.
-  Requires `teff[stores-weaviate]` (weaviate-client). Uses the embedded Weaviate
-  server, so no external service is needed.
+  RAG over the Teff knowledge base (docs.csv) using the Weaviate store. Requires `teff[stores-weaviate]` (weaviate-client). Uses the embedded Weaviate server, so no external service is needed.
 
 tools:
   - type: rag
@@ -13,7 +11,7 @@ tools:
       store:
         type: weaviate
         collection: teff
-        embedded: true
+        embedded: True
         dim: 768
       documents:
         - type: csv
@@ -29,26 +27,13 @@ providers:
     base_url: http://localhost:11434
     chat_path: /api/chat
 steps:
-  - id: agent
-    type: react_agent
-    config:
-      provider: ollama
-      model: llama3.1:8b
+  - agent_step:
+      id: agent
       system: >
-        You are a RAG assistant over the Teff knowledge base. Always call
-        the 'rag' tool to search before answering, and answer strictly
-        from the retrieved snippets.
-      input_key: query
+        You are a RAG assistant over the Teff knowledge base. Always call the 'rag' tool to search before answering, and answer strictly from the retrieved snippets.
+      sections:
+        query: "Query"
       output_key: answer
-
-  - id: tool_exec
-    type: tool_exec
-    config:
-      messages_key: messages
-
-edges:
-  - from: agent
-    to: tool_exec
-    condition: _tool_call_name!=
-  - from: tool_exec
-    to: agent
+      use_tools: [rag]
+      model: llama3.1:8b
+      provider: ollama

@@ -17,79 +17,59 @@ state:
     talk: ""
     supervisor_rounds: 0
 
+default_provider: ollama
+default_model: llama3.1:8b
+
 providers:
   - name: ollama
     type: ollama
     base_url: http://localhost:11434
     chat_path: /api/chat
 steps:
-  - id: supervisor
-    type: supervisor
-    config:
-      system: |-
-        You are a router. Your job is to pick the agent that fits the user's message.
-
-        Agents:
-        - coder — a question about code, Python or programming
-        - talk — anything else (small talk, general questions)
-        - finish — the conversation is already answered and done
-
-        The message includes the current round and the user's request.  Reply with
-        exactly ONE word: coder, talk or finish.
-
-        Rules:
-        - No punctuation, no quotes, no explanation — only the single word.
-        - If an agent already answered and the user only confirms or continues the
-          same topic, return: finish.
-        - Never invent agents that are not listed above.
-      model: llama3.1:8b
-      provider: ollama
-      route_keys: {coder: code, talk: talk}
-      done_keys: [code, talk]
-      done_mode: any
-      fallback_agent: talk
-      max_rounds: 6
-
-  - id: coder
-    type: subflow
-    config:
-      build:
-        type: agent_step
+  - team:
+      id: supervisor
+      leader:
         system: |-
-          You are a concise Python coding assistant.
+          You are a router. Your job is to pick the agent that fits the user's message.
+
+          Agents:
+          - coder — a question about code, Python or programming
+          - talk — anything else (small talk, general questions)
+          - finish — the conversation is already answered and done
+
+          The message includes the current round and the user's request.  Reply with
+          exactly ONE word: coder, talk or finish.
 
           Rules:
-          - Reply with the code and a one-line explanation.
-          - Start directly with the code block; no preamble such as "Sure!".
-          - Never invent functions or libraries.
-        output_key: code
+          - No punctuation, no quotes, no explanation — only the single word.
+          - If an agent already answered and the user only confirms or continues the
+            same topic, return: finish.
+          - Never invent agents that are not listed above.
         model: llama3.1:8b
-        messages_key: messages
+        provider: ollama
+        route_keys: {coder: code, talk: talk}
+        done_keys: [code, talk]
+        done_mode: any
+        fallback: talk
+        max_rounds: 6
+      roles:
+        coder:
+          system: |-
+            You are a concise Python coding assistant.
 
-  - id: talk
-    type: subflow
-    config:
-      build:
-        type: agent_step
-        system: |-
-          You are a friendly chat assistant.
+            Rules:
+            - Reply with the code and a one-line explanation.
+            - Start directly with the code block; no preamble such as "Sure!".
+            - Never invent functions or libraries.
+          output_key: code
+          messages_key: messages
+        talk:
+          system: |-
+            You are a friendly chat assistant.
 
-          Rules:
-          - Reply briefly and warmly.
-          - Never invent facts.
-          - Start directly with your reply; no preamble.
-        output_key: talk
-        model: llama3.1:8b
-        messages_key: messages
-
-edges:
-  - from: supervisor
-    to: coder
-    condition: next_agent=coder
-  - from: supervisor
-    to: talk
-    condition: next_agent=talk
-  - from: coder
-    to: supervisor
-  - from: talk
-    to: supervisor
+            Rules:
+            - Reply briefly and warmly.
+            - Never invent facts.
+            - Start directly with your reply; no preamble.
+          output_key: talk
+          messages_key: messages

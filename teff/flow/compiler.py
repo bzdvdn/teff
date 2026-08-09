@@ -49,6 +49,13 @@ Document grammar (0.2 MVP — see ``docs/design/two-layer.md``)::
           input_keys: [items]
           output_key: results
           processor: {llm: {model: ..., system: "..."}}
+      - branch:
+          key: sentiment
+          cases:
+            - {value: positive, steps: [transform: {...}]}
+            - {value: negative, steps: [transform: {...}]}
+          default: {transform: {...}}
+          converge: {transform: {...}}
       - loop:
           key: verdict
           until: pass
@@ -465,6 +472,71 @@ def _h_interrupt(flow: Flow, payload: dict) -> None:
     )
 
 
+def _h_branch(flow: Flow, payload: dict) -> None:
+    """Compile ``branch: {key, cases, default?, converge?}`` into conditional
+    edges plus an optional merge node::
+
+        - branch:
+            key: sentiment
+            cases:
+              - {value: positive, steps: [transform: {...}]}
+              - {value: negative, steps: [transform: {...}]}
+            default:
+              - transform: {action: value, value: neutral, output_key: reply}
+            converge:
+              transform: {action: uppercase, input_key: reply, output_key: result}
+    """
+    from teff.flow.case import Case
+
+    _pop_id(payload)
+    key = payload.get("key")
+    if not key:
+        raise ConfigError("branch requires a `key`")
+    cases_data = payload.get("cases")
+    if not isinstance(cases_data, list) or not cases_data:
+        raise ConfigError("branch `cases:` must be a non-empty list")
+    cases: list[Case] = []
+    for case_spec in cases_data:
+        if not isinstance(case_spec, dict):
+            raise ConfigError(f"branch case must be a mapping, got {case_spec!r}")
+        value = case_spec.get("value")
+        if value is None:
+            raise ConfigError("branch case requires a `value`")
+        steps = case_spec.get("steps")
+        if not isinstance(steps, list) or not steps:
+            raise ConfigError(f"branch case {value!r} requires a `steps:` list")
+        case = Case(str(value))
+        for node in _nodes_from_steps(flow, steps):
+            case.add(node)
+        cases.append(case)
+    default_node = None
+    default_spec = payload.get("default")
+    if default_spec is not None:
+        default_node = _branch_default_node(flow, default_spec)
+    flow.branch(key, *cases, default=default_node)
+    converge_spec = payload.get("converge")
+    if converge_spec is not None:
+        if not isinstance(converge_spec, dict) or len(converge_spec) != 1:
+            raise ConfigError("branch `converge:` must be a single-key node step")
+        flow.converge(_as_node(flow, converge_spec))
+
+
+def _branch_default_node(flow: Flow, spec: typing.Any) -> "Node":
+    """Compile a branch ``default:`` — a single node or a chained list."""
+    nodes = _nodes_from_steps(flow, spec)
+    if not nodes:
+        raise ConfigError("branch `default:` cannot be empty")
+    if len(nodes) == 1:
+        return nodes[0]
+    from teff.flow.flow import Flow
+    from teff.flow.sub_flow import SubFlow
+
+    inner = Flow("branch-default")
+    for node in nodes:
+        inner.step(node)
+    return SubFlow(inner.compile())
+
+
 def _h_route(flow: Flow, payload: dict) -> None:
     from teff.node.command_node import CommandNode
 
@@ -535,6 +607,26 @@ def _nodes_from_step(flow_to_use: Flow, step: typing.Any) -> list["Node"]:
     return [_as_node(flow_to_use, step)]
 
 
+def _h_type(flow: Flow, payload: dict) -> None:
+    """Compile an arbitrary registered node type as one step::
+
+    - type: {type: csv, config: {...}}
+    """
+    from teff.node.registry import default_registry
+
+    if not isinstance(payload, dict):
+        raise ConfigError("`type:` step requires a mapping")
+    stype = payload.get("type")
+    if not stype:
+        raise ConfigError("`type:` step requires a `type:` key")
+    pid = _pop_id(payload)
+    config = payload.get("config") or {}
+    if not isinstance(config, dict):
+        raise ConfigError(f"`type:` step config must be a mapping, got {config!r}")
+    node = default_registry.create(stype, config)
+    flow.step(node, id=pid)
+
+
 _HANDLERS = {
     "llm": _h_llm,
     "transform": _h_transform,
@@ -545,24 +637,32 @@ _HANDLERS = {
     "map": _h_map,
     "loop": _h_loop,
     "interrupt": _h_interrupt,
+    "branch": _h_branch,
     "route": _h_route,
+    "type": _h_type,
 }
 
 
 def _build_state(
     data: dict,
+    base_dir: str | None = None,
 ) -> tuple[list, dict, dict]:
     """Mirror ``load_workflow``'s tools / initial-state / reducers extraction."""
+    import teff.rag  # noqa: F401 — registers the "rag" tool
+    import teff.tool.builtin  # noqa: F401 — registers built-in tools
     from teff.state.state import (
         reducers_from_yaml_schema,
         validate_state,
     )
     from teff.tool.registry import default_tool_registry
+    from teff.yaml import _resolve_rag_config
 
     tools: list = []
     for td in data.get("tools", []) or []:
         ttype = td["type"]
         tconfig = td.get("config", {})
+        if ttype in ("rag", "rag_ingest"):
+            tconfig = _resolve_rag_config(tconfig, base_dir or os.getcwd())
         tools.append(default_tool_registry.create(ttype, tconfig))
 
     state_block = data.get("state", {})
@@ -591,7 +691,7 @@ def compile_flow_file(path: str) -> "Graph":
     return flow_from_yaml(doc).compile()
 
 
-def load_flow(path: str):
+def load_flow(path: str, data: dict | None = None):
     """Load a ``flow.yaml`` as a ``(graph, tools, initial, reducers)`` tuple.
 
     Mirrors :func:`teff.yaml.load_workflow` so callers (and the CLI) can
@@ -601,14 +701,18 @@ def load_flow(path: str):
 
     The compiled ``graph`` reflects all idioms in the authoring layer; the
     optional ``tools:`` / ``state:`` blocks are passed through unchanged.
+    Pass *data* (a document already resolved by :func:`teff.yaml.load_workflow`
+    — env interpolation and ``include:`` blocks applied) to reuse it instead
+    of re-reading the file.
     """
-    data = load_flow_yaml(path)
+    if data is None:
+        data = load_flow_yaml(path)
     base_dir = os.path.dirname(os.path.abspath(path))
     from teff.plugins import load_plugins_from_document
 
     load_plugins_from_document(data, base_dir)
     graph = flow_from_yaml(data).compile()
-    tools, initial, reducers = _build_state(data)
+    tools, initial, reducers = _build_state(data, base_dir)
     return graph, tools, initial, reducers
 
 
@@ -625,7 +729,14 @@ def looks_like_flow(data: dict) -> bool:
     for step in steps:
         if not isinstance(step, dict):
             continue
-        for key in step:
+        for key, value in step.items():
+            if key == "type":
+                # ``type:`` is only an idiom when its value is a mapping
+                # (``- type: {type: csv, config: {...}}``); a low-level
+                # ``type: transform`` string is a plain step key.
+                if isinstance(value, dict) and value.get("type"):
+                    return True
+                continue
             if key in _HANDLERS:
                 return True
     return False

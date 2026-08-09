@@ -16,22 +16,12 @@ providers:
     chat_path: /api/chat
 
 steps:
-  - id: greet
-    type: llm_chat
-    config:
-      provider: ollama
+  - llm:
+      id: greet
       model: llama3.1:8b
+      provider: ollama
       system: "You are a helpful assistant. Reply with one short sentence."
       prompt: "Say hello to a {topic} engineer."
       output_key: greeting
 
-  - id: shout
-    type: transform
-    config:
-      action: uppercase
-      input_key: greeting
-      output_key: loud
-
-edges:
-  - from: greet
-    to: shout
+  - transform: {id: shout, action: uppercase, input_key: greeting, output_key: loud}

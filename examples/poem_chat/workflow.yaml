@@ -32,23 +32,24 @@ checkpoint:
   type: file
   path: data/checkpoints
 
-steps:
-  - id: compose
-    type: context_builder
-    config:
-      messages_key: messages
-      sections:
-        poem: "Current poem"
-        critic_note: "Critic feedback"
-        answer: "New user feedback"
-      output_key: topic
-      reset_keys: [poem, critic_note, answer]
+default_provider: ollama
+default_model: llama3.1:8b
 
-  - id: poet
-    type: llm_chat
-    config:
-      provider: ollama
-      model: llama3.1:8b
+steps:
+  - type:
+      id: compose
+      type: context_builder
+      config:
+        messages_key: messages
+        sections:
+          poem: "Current poem"
+          critic_note: "Critic feedback"
+          answer: "New user feedback"
+        output_key: topic
+        reset_keys: [poem, critic_note, answer]
+
+  - llm:
+      id: poet
       system: >-
         You are an outstanding poet. Below is the topic and, if present,
         feedback — take it into account and rewrite the poem accordingly.
@@ -56,11 +57,8 @@ steps:
       prompt: "{topic}"
       output_key: poem
 
-  - id: critic
-    type: llm_chat
-    config:
-      provider: ollama
-      model: llama3.1:8b
+  - llm:
+      id: critic
       system: >-
         You are a demanding poetry critic. Judge the poem: rhyme, rhythm,
         imagery. Reply with a single JSON object with fields "verdict" and
@@ -74,23 +72,13 @@ steps:
       output_key: critic
       parse: true
 
-  - id: take_note
-    type: transform
-    config:
-      action: json_get
-      input_key: critic
-      field: note
-      output_key: critic_note
+  - transform: {id: take_note, action: json_get, input_key: critic, field: note,
+                output_key: critic_note}
 
-  - id: show
-    type: append_assistant
-    config:
-      output_key: poem
-      messages_key: messages
+  - type: {type: append_assistant, config: {output_key: poem, messages_key: messages}}
 
-  - id: approval
-    type: interrupt
-    config:
+  - interrupt:
+      id: approval
       key: answer
       prompt: >-
         Here is the poem:
@@ -125,25 +113,12 @@ steps:
         pass_value: keep
         fail_value: rewrite
 
-  - id: route
-    type: command
-    config:
+  - route:
+      id: route
       routes:
         - {when: "decision=keep", goto: done}
         - {when: "decision=rewrite", goto: compose}
       goto: approval
 
-  - id: done
-    type: transform
-    config:
-      action: value
-      value: "Poem done — hope you like it!"
-      output_key: done
-
-edges:
-  - {from: compose, to: poet}
-  - {from: poet, to: critic}
-  - {from: critic, to: take_note}
-  - {from: take_note, to: show}
-  - {from: show, to: approval}
-  - {from: approval, to: route}
+  - transform: {id: done, action: value,
+                value: "Poem done — hope you like it!", output_key: done}

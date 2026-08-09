@@ -2,18 +2,7 @@ name: shared-metrics
 description: Included workflow — tokenizes a CSV list and counts a keyword.
 
 steps:
-  - id: split_items
-    type: transform
-    config:
-      action: split
-      input_key: raw
-      sep: ","
-      output_key: items
-
-  - id: flag_keyword
-    type: transform
-    config:
-      action: contains
-      input_key: raw
-      value: urgent
-      output_key: has_urgent
+  - transform: {id: split_items, action: split, input_key: raw, sep: ",",
+                output_key: items}
+  - transform: {id: flag_keyword, action: contains, input_key: raw,
+                value: urgent, output_key: has_urgent}

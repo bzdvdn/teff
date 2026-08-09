@@ -24,24 +24,14 @@ state:
     doc: "draft report"
 
 steps:
-  - id: write
-    type: transform
-    config: {action: uppercase, input_key: doc, output_key: report}
-
-  - id: gate
-    type: interrupt
-    config:
+  - transform: {id: write, action: uppercase, input_key: doc, output_key: report}
+  - interrupt:
+      id: gate
       key: approved
       prompt: "Approve the report? (yes / no)"
-    retry: {enabled: false}
-
-  - id: ship
-    type: transform
-    config: {action: value, value: shipped, output_key: status}
-
-edges:
-  - from: write
-    to: gate
-  - from: gate
-    to: ship
-    condition: "approved=yes"
+  - route:
+      key: approved
+      routes:
+        - {when: "approved=yes", goto: ship}
+      goto: STOP
+  - transform: {id: ship, action: value, value: shipped, output_key: status}

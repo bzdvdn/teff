@@ -7,19 +7,7 @@ state:
   initial:
     review: "great service"
 steps:
-  - id: normalize
-    type: transform
-    config:
-      action: lowercase
-      input_key: review
-      output_key: normalized
-  - id: answer
-    type: transform
-    config:
-      action: value
-      input_key: review
-      output_key: answer
-      value: "positive"
-edges:
-  - from: normalize
-    to: answer
+  - transform: {id: normalize, action: lowercase, input_key: review,
+                output_key: normalized}
+  - transform: {id: answer, action: value, input_key: review,
+                output_key: answer, value: "positive"}

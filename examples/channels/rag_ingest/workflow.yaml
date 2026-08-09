@@ -7,10 +7,9 @@ description: >-
   ingested so far.
 
   Pipeline per turn:
-    1. llm_chat: turn the raw payload into clean document text (a
-       llm_chat step, so the parse step is explicit and swappable).
+    1. llm: turn the raw payload into clean document text.
     2. tool_call -> rag_ingest: chunk + embed + store the result.
-    3. llm_chat: confirm and, optionally, answer from the store.
+    3. llm: confirm and, optionally, answer from the store.
 
   Requires Ollama: llama3.1:8b + nomic-embed-text.
 
@@ -40,6 +39,9 @@ state:
     doc_text: ""
     ingest_result: ""
     answer: ""
+
+default_provider: ollama
+default_model: llama3.1:8b
 
 providers:
   - name: ollama
@@ -84,11 +86,8 @@ tools:
 
 steps:
   # 1. Normalize the raw row into clean document text with the LLM.
-  - id: normalize
-    type: llm_chat
-    config:
-      provider: ollama
-      model: llama3.1:8b
+  - llm:
+      id: normalize
       system: |-
         You turn one product row into ONE clean, factual catalog paragraph in
         Russian. Write it exactly once — no repetition, no preamble, no bullet
@@ -99,26 +98,20 @@ steps:
       messages_key: messages
 
   # 2. Write it into the vector store (chunk + embed + persist).
-  - id: ingest
-    type: tool_call
-    config:
-      tool: rag_ingest
-      args:
-        text: "{doc_text}"
-      output_key: ingest_result
-      on_error: message
+  - type:
+      id: ingest
+      type: tool_call
+      config:
+        tool: rag_ingest
+        args:
+          text: "{doc_text}"
+        output_key: ingest_result
+        on_error: message
 
   # 3. Confirm what was stored.
-  - id: confirm
-    type: llm_chat
-    config:
-      provider: ollama
-      model: llama3.1:8b
+  - llm:
+      id: confirm
       system: "Reply in one short sentence confirming the row was added to the knowledge base."
       prompt: "ingested: {ingest_result}\n\nrow: {row}"
       output_key: answer
       messages_key: messages
-
-edges:
-  - {from: normalize, to: ingest}
-  - {from: ingest, to: confirm}

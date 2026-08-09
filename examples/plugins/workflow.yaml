@@ -14,26 +14,6 @@ tools:
   - type: word_count
 
 steps:
-  - id: slug
-    type: slugify_node
-    config:
-      input_key: body
-      output_key: slug
-
-  - id: count
-    type: word_count_node
-    config:
-      input_key: body
-      output_key: count
-
-  - id: format
-    type: format_json
-    config:
-      keys: [slug, count]
-      output_key: report
-
-edges:
-  - from: slug
-    to: count
-  - from: count
-    to: format
+  - type: {type: slugify_node, config: {input_key: body, output_key: slug}}
+  - type: {type: word_count_node, config: {input_key: body, output_key: count}}
+  - type: {type: format_json, config: {keys: [slug, count], output_key: report}}

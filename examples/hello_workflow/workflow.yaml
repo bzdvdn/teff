@@ -11,42 +11,16 @@ state:
     text: "just one line"
 
 steps:
-  - id: count
-    type: transform
-    config:
-      action: count_lines
-      input_key: text
-      output_key: lines
-
-  - id: single
-    type: transform
-    config:
-      action: value
-      value: single-line note
-      output_key: note
-
-  - id: multi
-    type: transform
-    config:
-      action: value
-      value: multi-line note
-      output_key: note
-
-  - id: status
-    type: transform
-    config:
-      action: value
-      value: done
-      output_key: status
-
-edges:
-  - from: count
-    to: single
-    condition: lines=1
-  - from: count
-    to: multi
-    condition: lines!=1
-  - from: single
-    to: status
-  - from: multi
-    to: status
+  - transform: {id: count, action: count_lines, input_key: text, output_key: lines}
+  - branch:
+      key: lines
+      cases:
+        - value: "1"
+          steps:
+            - transform: {id: single, action: value, value: single-line note,
+                          output_key: note}
+      default:
+        - transform: {id: multi, action: value, value: multi-line note,
+                      output_key: note}
+      converge:
+        transform: {id: status, action: value, value: done, output_key: status}

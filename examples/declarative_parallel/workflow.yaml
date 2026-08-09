@@ -11,24 +11,11 @@ state:
     text: "  hello teff  "
 
 steps:
-  - id: fanout
-    type: parallel
-    config:
+  - parallel:
+      id: fanout
       branches:
-        - type: transform
-          config: {action: uppercase, input_key: text, output_key: upper}
-        - type: transform
-          config: {action: count_lines, input_key: text, output_key: lines}
-        - type: transform
-          config: {action: trim, input_key: text, output_key: trimmed}
+        - transform: {action: uppercase, input_key: text, output_key: upper}
+        - transform: {action: count_lines, input_key: text, output_key: lines}
+        - transform: {action: trim, input_key: text, output_key: trimmed}
 
-  - id: report
-    type: transform
-    config:
-      action: value
-      value: done
-      output_key: status
-
-edges:
-  - from: fanout
-    to: report
+  - transform: {id: report, action: value, value: done, output_key: status}

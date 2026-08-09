@@ -134,6 +134,15 @@ def _resolve_includes(data: dict, base_dir: str) -> dict:
             step = dict(step)
             if isinstance(step.get("id"), str):
                 step["id"] = prepend_id(step["id"])
+            # Authoring-layer steps carry their id inside the single-key
+            # idiom payload (``transform: {id: split, ...}``); prefix it so
+            # a sugar document can be included several times as well.
+            elif len(step) == 1:
+                idiom, payload = next(iter(step.items()))
+                if isinstance(payload, dict) and isinstance(payload.get("id"), str):
+                    payload = dict(payload)
+                    payload["id"] = prepend_id(payload["id"])
+                    step = {idiom: payload}
             cfg = step.get("config")
             if isinstance(cfg, dict):
                 cfg = dict(cfg)
@@ -643,6 +652,17 @@ def load_workflow(path: str) -> tuple[Graph, list[Tool], dict, dict[str, Reducer
     base_dir = os.path.dirname(os.path.abspath(path))
     data = _interpolate_env(data)
     data = _resolve_includes(data, base_dir)
+
+    # Authoring-layer documents (single-key idiom steps: ``team:``,
+    # ``map:``, ``loop:``…) compile through the Flow builder; the classic
+    # low-level surface (id/type steps + edges) goes through this loader.
+    from teff.flow.compiler import looks_like_flow
+
+    if looks_like_flow(data):
+        from teff.flow.compiler import load_flow
+
+        return load_flow(path, data=data)
+
     data = _expand_interrupt_strategy(data)
     from teff.plugins import load_plugins_from_document
 

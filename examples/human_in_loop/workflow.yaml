@@ -6,41 +6,40 @@ state:
       type: string
   initial:
     summ: 80000
+
+default_provider: ollama
+default_model: llama3.1:8b
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
 steps:
-  - id: draft
-    type: llm_chat
-    config:
-      model: llama3.1:8b
+  - llm:
+      id: draft
       system: "Ты инженер по ремонту. Составляй краткие планы работ по-русски, 3-5 пунктов."
       prompt: "Составь план ремонта санузла на сумму {summ} рублей."
       output_key: draft
-  - id: ask
-    type: interrupt
-    config:
+
+  - interrupt:
+      id: ask
       key: approved
       prompt: "Одобрить? (да / правки)"
-  - id: final
-    type: llm_chat
-    config:
-      model: llama3.1:8b
-      system: "Ты инженер по ремонту. Составляй краткие планы работ по-русски, 3-5 пунктов."
-      prompt: "Клиент одобрил план: {draft}\nВерни финальную версию плана."
-      output_key: final
-  - id: edit
-    type: llm_chat
-    config:
-      model: llama3.1:8b
-      system: "Ты инженер по ремонту. Составляй краткие планы работ по-русски, 3-5 пунктов."
-      prompt: "Клиент отклонил план с правками: {approved}\n\nПлан: {draft}\n\nПереработай план с учётом правок клиента и верни новый план."
-      output_key: draft
-edges:
-  - from: draft
-    to: ask
-  - from: ask
-    to: final
-    condition: "approved=да"
-  - from: ask
-    to: edit
-    condition: "approved!=да"
-  - from: edit
-    to: ask
+
+  - loop:
+      key: approved
+      until: да
+      body:
+        - llm:
+            id: edit
+            system: "Ты инженер по ремонту. Составляй краткие планы работ по-русски, 3-5 пунктов."
+            prompt: "Клиент отклонил план с правками: {approved}\n\nПлан: {draft}\n\nПереработай план с учётом правок клиента и верни новый план."
+            output_key: draft
+      done:
+        - llm:
+            id: final
+            system: "Ты инженер по ремонту. Составляй краткие планы работ по-русски, 3-5 пунктов."
+            prompt: "Клиент одобрил план: {draft}\nВерни финальную версию плана."
+            output_key: final

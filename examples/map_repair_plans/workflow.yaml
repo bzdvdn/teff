@@ -14,26 +14,24 @@ state:
     type: ["кухни", "санузел", "балкона"]
     summ: [150000, 80000, 45000]
 
+default_provider: ollama
+default_model: llama3.1:8b
+
 providers:
   - name: ollama
     type: ollama
     base_url: http://localhost:11434
     chat_path: /api/chat
 steps:
-  - id: plans
-    type: map
-    config:
+  - map:
+      id: plans
       input_keys: [type, summ]
       output_key: plans
       max_concurrency: 2
       processor:
-        type: llm_chat
-        provider: ollama
-        model: llama3.1:8b
-        system: >
-          Ты инженер по ремонту. Составь краткий план работ по заданию
-          клиента. Отвечай по-русски, 3-5 пунктов.
-        prompt: "Составь план для ремонта {type} на сумму {summ} рублей."
-        output_key: plan
-
-edges: []
+        llm:
+          system: >
+            Ты инженер по ремонту. Составь краткий план работ по заданию
+            клиента. Отвечай по-русски, 3-5 пунктов.
+          prompt: "Составь план для ремонта {type} на сумму {summ} рублей."
+          output_key: plan
