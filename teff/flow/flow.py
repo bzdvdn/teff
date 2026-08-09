@@ -1,6 +1,6 @@
 """Fluid flow builder for constructing graphs."""
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, TypeAlias
 
 from teff.flow.case import Case
 from teff.flow.sub_flow import SubFlow
@@ -8,6 +8,7 @@ from teff.graph import Edge, Graph
 from teff.memory.context import MemoryConfig
 from teff.node.agent import ReActAgent
 from teff.node.command import Command
+from teff.node.context import AppendAssistant, ContextBuilder
 from teff.node.llm import LLM
 from teff.node.map import Map
 from teff.node.node import Node
@@ -18,12 +19,19 @@ from teff.node.transform import Transform
 from teff.provider import ProviderRegistry
 
 if TYPE_CHECKING:
-    from teff.node.ask import Ask
     from teff.flow.agent import AgentRole
+    from teff.node.ask import Ask
 
 #: A plain ``(ctx, state) -> dict | Command`` callable accepted by
 #: :meth:`Flow.step` (wrapped into a function node at runtime).
 FunctionNode = Callable[..., dict | Command]
+
+#: One role spec accepted by :meth:`Flow.team` (and the ``team:`` YAML
+#: idiom): an :class:`~teff.flow.AgentRole`, a plain dict recipe
+#: (``{system, output_key, use_tools, ...}``), a :class:`Node` used as-is, a
+#: :class:`Flow` embedded as a ``SubFlow``, or a list of any of those (a
+#: route chain such as ``agent → interrupt``).
+RoleSpec: TypeAlias = "AgentRole | dict | Node | Flow | list[RoleSpec]"
 
 
 class Flow:
@@ -239,6 +247,77 @@ class Flow:
                 raise TypeError("transform() expects a Transform instance")
         return self.step(node, id=id)
 
+    def context_builder(
+        self,
+        node: "ContextBuilder | None" = None,
+        id: str | None = None,
+        **config,
+    ) -> "Flow":
+        """Add a :class:`~teff.node.context.ContextBuilder` node.
+
+        Composes a plain-text ``input`` for an agent from shared state —
+        each configured section rendered as ``<label>:\\n<value>`` plus the
+        latest user message, clearing scratch keys before the agent runs::
+
+            flow.context_builder(
+                sections={"plan": "Plan", "summary": "Summary"},
+                messages_key="messages",
+                output_key="input",
+            )
+
+        Pass a pre-built ``ContextBuilder`` instance or keyword config that
+        is forwarded to the ``ContextBuilder`` constructor.  Passing both an
+        instance and config kwargs raises ``TypeError``.  *id* optionally
+        names the node in the compiled graph.
+
+        Returns ``self`` for chaining.
+        """
+        if node is None:
+            node = ContextBuilder(**config)
+        else:
+            if config:
+                raise TypeError(
+                    "context_builder() accepts either a ContextBuilder "
+                    "instance or config kwargs, not both"
+                )
+            if not isinstance(node, ContextBuilder):
+                raise TypeError("context_builder() expects a ContextBuilder instance")
+        return self.step(node, id=id)
+
+    def append_assistant(
+        self,
+        node: "AppendAssistant | None" = None,
+        id: str | None = None,
+        **config,
+    ) -> "Flow":
+        """Add a :class:`~teff.node.context.AppendAssistant` node.
+
+        Appends an agent's response (``state[output_key]``) back to the
+        shared conversation as an ``assistant`` message::
+
+            flow.append_assistant(output_key="draft", messages_key="messages")
+
+        Pass a pre-built ``AppendAssistant`` instance or keyword config that
+        is forwarded to the ``AppendAssistant`` constructor.  Passing both an
+        instance and config kwargs raises ``TypeError``.  *id* optionally
+        names the node in the compiled graph.
+
+        Returns ``self`` for chaining.
+        """
+        if node is None:
+            node = AppendAssistant(**config)
+        else:
+            if config:
+                raise TypeError(
+                    "append_assistant() accepts either an AppendAssistant "
+                    "instance or config kwargs, not both"
+                )
+            if not isinstance(node, AppendAssistant):
+                raise TypeError(
+                    "append_assistant() expects an AppendAssistant instance"
+                )
+        return self.step(node, id=id)
+
     def supervisor(
         self,
         node: "Supervisor | None" = None,
@@ -278,10 +357,11 @@ class Flow:
         self,
         system: str = "",
         *,
-        roles: dict[str, "AgentRole"],
+        roles: dict[str, RoleSpec],
         model: str | None = None,
         provider: str | None = None,
         messages_key: str = "messages",
+        sections: dict[str, str] | None = None,
         route_keys: dict[str, str] | None = None,
         done_keys: list[str] | None = None,
         done_mode: str = "all",
@@ -345,27 +425,42 @@ class Flow:
                     out = role_name
                 route_keys[role_name] = out
 
+        def build_role(
+            spec: RoleSpec,
+        ) -> "Node | list[Node]":
+            """Normalize one role spec into node(s) for ``route()``.
+
+            An ``AgentRole`` / recipe dict / ``Flow`` becomes a single node
+            (``SubFlow`` for agents/flow); a plain ``Node`` is used as-is; a
+            list (a route chain such as agent → interrupt) is normalized
+            element-wise so roles can be mixed with plain nodes.
+            """
+            if isinstance(spec, list):
+                return [build_role(item) for item in spec]  # type: ignore[misc]
+            if isinstance(spec, AgentRole):
+                return spec.build(model=model, provider=provider, id=role_name)
+            if isinstance(spec, dict):
+                return AgentRole.from_mapping(spec, name=role_name).build(
+                    model=model, provider=provider, id=role_name
+                )
+            if isinstance(spec, Flow):
+                return SubFlow(graph=spec.compile())
+            return spec
+
         agents: dict[str, "Node | list[Node]"] = {}
         for role_name, spec in roles.items():
-            if isinstance(spec, AgentRole):
-                agents[role_name] = spec.build(
-                    model=model, provider=provider, id=role_name
-                )
-            elif isinstance(spec, dict):
-                role = AgentRole.from_mapping(spec, name=role_name)
-                agents[role_name] = role.build(
-                    model=model, provider=provider, id=role_name
-                )
-            elif isinstance(spec, Flow):
-                agents[role_name] = SubFlow(graph=spec.compile())
+            if isinstance(spec, list):
+                chain = build_role(spec)
+                agents[role_name] = self._as_chain(chain)
             else:
-                agents[role_name] = self._as_chain(spec)
+                agents[role_name] = build_role(spec)
 
         supervisor = Supervisor(
             system=system,
             model=model,
             provider=provider,
             messages_key=messages_key,
+            sections=sections,
             route_keys=route_keys,
             done_keys=set(done_keys or ()),
             done_mode=done_mode,

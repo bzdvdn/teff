@@ -68,6 +68,62 @@ class TestLinearSteps:
         assert node.type == "subflow"
         assert nid.startswith("agent-coder")
 
+    def test_context_builder_idiom(self):
+        g = compile_doc(
+            textwrap.dedent(
+                """
+                steps:
+                  - context_builder:
+                      id: compose
+                      sections: {plan: "Plan", summary: "Summary"}
+                      messages_key: messages
+                      output_key: input
+                      reset_keys: [scratch]
+                """
+            )
+        )
+        assert g.entry_point == "compose"
+        node = g.nodes["compose"]
+        assert node.type == "context_builder"
+        assert node.config["sections"] == {"plan": "Plan", "summary": "Summary"}
+        assert node.config["messages_key"] == "messages"
+        assert node.config["output_key"] == "input"
+        assert node.config["reset_keys"] == ["scratch"]
+
+    def test_append_assistant_idiom(self):
+        g = compile_doc(
+            textwrap.dedent(
+                """
+                steps:
+                  - append_assistant: {output_key: draft, messages_key: messages, id: show}
+                """
+            )
+        )
+        assert g.entry_point == "show"
+        node = g.nodes["show"]
+        assert node.type == "append_assistant"
+        assert node.config["output_key"] == "draft"
+        assert node.config["messages_key"] == "messages"
+
+    def test_context_append_chain(self):
+        g = compile_doc(
+            textwrap.dedent(
+                """
+                steps:
+                  - context_builder:
+                      id: compose
+                      sections: {plan: "Plan"}
+                      messages_key: messages
+                      output_key: input
+                  - append_assistant: {output_key: draft, messages_key: messages}
+                """
+            )
+        )
+        assert g.entry_point == "compose"
+        assert list(g.nodes) == ["compose", "append_assistant_2"]
+        edges = {(e.source_id, e.target_id) for e in g.edges}
+        assert ("compose", "append_assistant_2") in edges
+
     def test_unknown_step_raises(self):
         import yaml
 
@@ -925,6 +981,25 @@ class TestTwoLayerValidation:
                                 prompt: "x", output_key: v}
                       done:
                         - interrupt: {key: ok, prompt: "Go?"}
+                """
+            )
+        )
+        assert not validate_flow_file(str(p))
+
+    def test_validate_flow_context_append_ok(self, tmp_path):
+        from teff.yaml_schema import validate_flow_file
+
+        p = tmp_path / "wf.yaml"
+        p.write_text(
+            textwrap.dedent(
+                """
+                name: v
+                steps:
+                  - context_builder:
+                      id: compose
+                      sections: {plan: "Plan"}
+                      output_key: input
+                  - append_assistant: {output_key: draft}
                 """
             )
         )

@@ -1,8 +1,43 @@
-# YAML workflows
+# Reference: `graph.yaml`
 
-The canonical graph is YAML/JSON — code is optional. Workflows are loaded with
-`load_workflow`, validated with `teff validate`, and serialized back out with
-`workflow_to_yaml` / `Flow.to_yaml()`.
+This page is the complete field reference for the low-level `graph.yaml`
+document — every node and every arrow explicit, with each key, its type, and
+its default. It is the compiled form of everything the
+[`flow.yaml`](flow-yaml.md) authoring layer (and the `Flow` builder) produces.
+
+Workflows are loaded with `load_workflow`, validated with `teff validate`, and
+serialized back out with `workflow_to_yaml` / `Flow.to_yaml()`.
+
+> **Two formats, auto-detected.** A `flow.yaml` uses the idiom surface
+> (`llm:`, `team:`, `map:`); a `graph.yaml` spells out `id`/`type`/`config` and
+> `edges:`. The CLI and loaders detect the format with `looks_like_flow`, so
+> `teff run` / `teff validate` / `teff graph` work on either without a flag.
+> Prefer `flow.yaml` when writing by hand; treat this `graph.yaml` reference as
+> the canonical vocabulary both formats compile to.
+
+## Top-level keys
+
+| Key | Type | Default | Purpose |
+| --- | ---- | ------- | ------- |
+| `name` | string | `""` | Optional label. |
+| `description` | string | — | Optional free-text description. |
+| `include` | string/list | — | Merge steps/edges/tools/state from other files (path or `{path, prefix}`), recursively. |
+| `steps` | list | — | **Required.** Nodes, each `{id, type, config?, retry?}` (see [steps](#steps-nodes)). |
+| `edges` | list | `[]` | Routing, each `{from, to, condition?}` (see [edges](#edges-routing)). |
+| `tools` | list | `[]` | Tool instances made available to agents (see [tools](#tools-tool-registry)). |
+| `state` | object | `{}` | `{schema, initial}` — seed values and per-key reducers (see [state](#state-initial-values-and-reducers)). |
+| `plugins` | string/list | — | Extra node/tool modules to import (paths). |
+| `plugins_folder` | string | `"plugins"` | Auto-loaded plugin folder. |
+| `checkpoint` | object | — | Durable-runs block (see [checkpoint](#durable-runs-checkpoint)). |
+| `hooks` | object | — | Named hook callbacks (see [hooks](#hook-events-hooks)). |
+| `observability` | object | — | Full-run tracing block (see [tracing](#tracing-a-workflow-observability)). |
+| `providers` | list | `[]` | Declared provider endpoints (see [providers](#custom-providers)). |
+| `default_provider` | string | — | Provider for every step that doesn't name one. |
+| `default_model` | string | — | Model for every step that doesn't name one. |
+
+Every value is interpolated against the process environment — `${ENV_VAR}`
+references are replaced; a variable that is not set stays as a literal
+placeholder (see [interpolation](#the-env-interpolation)).
 
 ## Structure
 
@@ -34,6 +69,55 @@ edges:                       # routing
     condition: results==""   # conditional: route on a state expression
     to: fallback
 ```
+
+## `steps:` — nodes
+
+Every step is `{id, type, config, retry}`. `id` and `type` are required;
+`config` is node-specific (see the [node reference](../reference/nodes.md) for
+every key); `retry` wraps the node (see [retrying](#retrying-failing-steps)).
+
+Built-in `type` values:
+
+| `type` | Purpose | Reference |
+| ------ | ------- | --------- |
+| `transform` | String/data transforms | [transform](../reference/nodes.md#transform) |
+| `llm_chat` | One model call | [llm_chat](../reference/nodes.md#llm_chat) |
+| `react_agent` | Tool-calling agent loop | [react_agent](../reference/nodes.md#react_agent-tool_exec) |
+| `tool_exec` | Execute tool calls signalled by an agent | [tool_exec](../reference/nodes.md#react_agent-tool_exec) |
+| `tool_call` | Invoke a registered tool with fixed args | [tool_call](../reference/nodes.md#tool_call) |
+| `context_builder` | Compose a scratch prompt from state + conversation | [context_builder](../reference/nodes.md#context_builder-append_assistant) |
+| `append_assistant` | Append the result as an assistant message | [append_assistant](../reference/nodes.md#context_builder-append_assistant) |
+| `interrupt` | Pause for human input; resume via checkpoint | [interrupt](../reference/nodes.md#interrupt) |
+| `supervisor` | Ask a model "which agent next" + guards | [supervisor](../reference/nodes.md#supervisor) |
+| `gate` | Verdict → loop decider + retry budget | [gate](../reference/nodes.md#gate) |
+| `validate` | Decode an interrupt answer into a loop decider | [validate](../reference/nodes.md#validate) |
+| `command` | Declarative `goto`/`STOP` routing from state | [command](../reference/nodes.md#command) |
+| `loop` | Repeat a body chain until a state condition holds | [loop](../reference/nodes.md#loop) |
+| `parallel` | Concurrent branches, merged by reducers | [parallel](../reference/nodes.md#parallel-map) |
+| `map` | Dynamic fan-out of a state list | [map](../reference/nodes.md#parallel-map) |
+| `subflow` | Embed a complete inner graph as one node | [subflows](#nested-subflows-composite-agents) |
+| `fallback` | Fill a field a model left empty | [fallback](../reference/nodes.md#fallback) |
+
+Plugin nodes registered via `plugins:`/`plugins_folder:` are valid `type`
+values too. An unknown type fails validation.
+
+## `edges:` — routing
+
+Each edge is `{from, to, condition}`. `from`/`to` name node ids (required);
+`condition` routes on the state:
+
+| `condition` | Routes when |
+| ----------- | ----------- |
+| *(omitted)* | always (the edge fires unconditionally) |
+| `"key=value"` | `state["key"] == value` |
+| `"key!=value"` | `state["key"] != value` |
+| `"key=a,b"` | `state["key"]` is `a` or `b` (comma = OR) |
+| `"key>=N"` / `"key<=N"` / `"key>N"` / `"key<N"` | numeric comparison |
+| `"__error__"` | the source node raised an exception |
+
+Edges reference existing step ids (validation error otherwise). The entry
+point is the first step; an edge to a step already targeted is fine — first
+matching edge wins during execution.
 
 ## Custom providers
 
@@ -101,6 +185,70 @@ steps:
 `default_model` resolved? The step raises `ConfigError`. Steps may still
 override the default with their own `provider:` / `model:`.
 
+### Provider keys
+
+| Key | Type | Default | Notes |
+| --- | ---- | ------- | ----- |
+| `name` | string | — | Unique provider key referenced by `provider:`/`default_provider:`. |
+| `type` | string | `openai_compatible` | `openai_compatible`, `anthropic_compatible`, or `ollama`. |
+| `base_url` | string | — | Endpoint base URL. |
+| `chat_path` | string | — | Chat endpoint path override. |
+| `api_key_env` | string | — | Env var holding the API key. |
+| `auth_header` / `auth_prefix` | string | — | Custom auth header / prefix. |
+| `timeout` | number | — | Request timeout. |
+
+## `state:` — initial values and reducers
+
+The `state:` block seeds the graph state and declares how concurrent or
+accumulating writers merge:
+
+```yaml
+state:
+  initial: {topic: "…", messages: []}
+  schema:
+    messages:
+      reducer: append
+      type: list
+    status:
+      reducer: keep
+```
+
+| Key | Type | Default | Notes |
+| --- | ---- | ------- | ----- |
+| `initial` | mapping | `{}` | Seed values. Validated against `schema` (`ConfigError` on mismatch). |
+| `schema` | mapping | `{}` | Per-key reducer declarations. |
+
+### Reducers
+
+Each `schema.<key>` is a mapping with a `reducer:` field (a bare string is
+accepted too). Keys without a `reducer` default to `override`.
+
+| `reducer` | Semantics |
+| --------- | --------- |
+| `override` | (default) The node's returned value replaces the key. |
+| `append` | The node's returned value is appended into the existing list. |
+| `keep` | The first write wins; later writes are ignored. |
+
+Use `append` for shared lists (e.g. `messages`) so parallel branches and
+supervisor turns accumulate instead of clobbering one another.
+
+## `tools:` — tool registry
+
+Tool instances made available to agents (and `tool_call` steps):
+
+```yaml
+tools:
+  - type: web_search
+  - type: python_eval
+  - type: rag
+    config: {store: sqlite, collection: docs}
+```
+
+Each entry is `{type, config}`; `config` is tool-specific. See the
+[tools reference](../reference/tools.md) for every built-in tool and its
+config keys. RAG tools resolve relative store paths against the workflow file.
+An unknown tool type fails validation.
+
 ## Tracing a workflow (`observability:`)
 
 A top-level `observability:` block turns on full-run tracing — topology,
@@ -161,6 +309,15 @@ Any step can be wrapped with retry logic via a `retry:` block next to its
 per retry, default 1.0), ``timeout`` (per-attempt timeout), and
 ``retry_on`` — a list of exception type names or HTTP status codes; by
 default every exception is retried.
+
+| `retry:` key | Type | Default | Notes |
+| ------------ | ---- | ------- | ----- |
+| `enabled` | bool | `true` | `false` keeps the schema valid but disables the wrapper. |
+| `max_retries` | int | `3` | Total attempts (including the first). |
+| `delay` | number | `0` | Seconds before each retry. |
+| `backoff` | number | `1.0` | Multiplier applied to `delay` per retry. |
+| `timeout` | number | — | Per-attempt timeout. |
+| `retry_on` | list | *all* | Exception type names or HTTP status codes; only these are retried. |
 
 ```yaml
 steps:
@@ -256,6 +413,37 @@ or different provider endpoints.  Use `state.schema ... reducer: append`
 when branches should accumulate (e.g. collecting `messages`) instead of
 overwriting a key.
 
+| `parallel` config | Type | Default | Notes |
+| ----------------- | ---- | ------- | ----- |
+| `branches` | list | — | Each branch: a step mapping or a list of step mappings (sequential inside the branch). |
+| `converge` | mapping | — | A single `{type: transform, config: ...}` step that re-joins the branches (only `transform` is supported in YAML). |
+
+## Dynamic fan-out (`map`)
+
+A `map` step fans a runtime state list out across parallel branches — branch
+count comes from the data, not the file:
+
+```yaml
+steps:
+  - id: summarize
+    type: map
+    config:
+      input_keys: [chunks]
+      output_key: summaries
+      max_concurrency: 4
+      processor:
+        type: llm_chat
+        config: {model: llama3.1:8b, input_key: chunk, output_key: summary}
+```
+
+| `map` config | Type | Default | Notes |
+| ------------ | ---- | ------- | ----- |
+| `input_keys` | string/list | — | State list key(s); multiple are zipped per index. |
+| `output_key` | string | — | State key receiving the list of per-item results. |
+| `processor` | mapping | — | The node applied per item (inline `{type, config}`). |
+| `chunk_size` | int | `1` | Items per branch. |
+| `max_concurrency` | int | — | Cap on concurrent branches. |
+
 ## Composing workflows (`include:`)
 
 An `include:` block merges steps, edges, tools and state from other workflow
@@ -295,6 +483,12 @@ steps:
 
 `goto: STOP` terminates the run.
 
+| `command` config | Type | Default | Notes |
+| ---------------- | ---- | ------- | ----- |
+| `routes` | list | `[]` | `{when, goto}` pairs; first match wins. |
+| `goto` | string | — | Fallback target, or `STOP` to end the run. |
+| `update` | mapping | — | State keys merged after routing. |
+
 ## Loops (`loop`)
 
 A `loop` step repeats a `body` chain until `state[key]` equals `until` —
@@ -315,6 +509,13 @@ steps:
 
 `max_rounds` (default 10) bounds the repetition; the condition uses the edges
 expression language, so `until: "да"` matches `"Да"` or `"да."`.
+
+| `loop` config | Type | Default | Notes |
+| ------------- | ---- | ------- | ----- |
+| `key` | string | — | State key the condition reads. |
+| `until` | string | — | Value of `key` that stops the loop. |
+| `max_rounds` | int | `10` | Maximum body rounds before giving up. |
+| `body` | node/list | — | Chain run each round (inline `{type, config}` specs). |
 
 ## Validated interrupts (`strategy:`)
 
@@ -355,6 +556,16 @@ An `llm` strategy needs `model` and `provider`:
 Edges that would have sourced from the interrupt now source from
 `{id}-validate`, where the decision key (`decision` by default) is written.
 
+| `interrupt` config | Type | Default | Notes |
+| ------------------ | ---- | ------- | ----- |
+| `key` | string | — | State key receiving the resume value. |
+| `prompt` | string | — | Question shown to the operator. |
+| `strategy` | mapping | — | `{equals}` \| `{any_of: [...]}` \| `{regex}` \| `{llm: {system, user, schema, model, provider}}`, plus passthrough keys (`decision_key`, `pass_value`, `fail_value`, `value_key`, `verdict_key`, `ok_field`, `rounds_key`, `max_rounds`). |
+
+Pausing raises `GraphInterrupt`; resume with the same `checkpoint_id` and
+`resume={key: answer}`. Requires a checkpointer. See
+[durable execution](durable.md).
+
 ## Durable runs (`checkpoint:`)
 
 A top-level `checkpoint:` block enables durable runs whose state is saved
@@ -366,6 +577,13 @@ checkpoint:
   type: sqlite              # file | sqlite | sqlite_history | pg | pg_history
   path: data/checkpoints.db
 ```
+
+| `checkpoint:` key | Type | Notes |
+| ----------------- | ---- | ----- |
+| `type` | string | `file` \| `sqlite` \| `sqlite_history` \| `pg` \| `pg_history`. |
+| `path` | string | Store path, resolved relative to the workflow file (SQLite/file). |
+| `dsn` | string | PostgreSQL connection string (PG variants). |
+| `table` | string | — | Optional table name override (PG variants). |
 
 `path` is resolved relative to the workflow file.  PG variants require
 `dsn:` (+ optional `table:`).  Use `teff run --checkpoint-id <id>` (or the
@@ -402,6 +620,12 @@ validation with a clear message.  Sync and async hooks are both supported
 (`graph.run` awaits async ones).  The same `hooks=` mapping can be passed
 programmatically.
 
+| `hooks:` key | Callback signature |
+| ------------ | ------------------ |
+| `on_node_start` | `(node_id, node, state)` |
+| `on_node_end` | `(node_id, node, state)` + the node result |
+| `on_node_error` | `(node_id, node, state)` + the exception |
+
 ## Inspecting a graph
 
 Render the topology back to YAML or as a Mermaid diagram:
@@ -429,6 +653,11 @@ graph, tools, state, reducers = load_workflow("workflow.yaml")
 result = await graph.run(state, tools=tools, reducers=reducers)
 ```
 
+Both loaders auto-detect the document layer: a `flow.yaml`-style document is
+routed through the flow compiler/validator, a low-level graph document through
+the graph path (`validate_workflow_file` → `validate_flow` vs
+`validate_workflow`; `load_workflow` → `load_flow` vs `load_workflow`).
+
 The CLI wraps both:
 
 ```bash
@@ -449,3 +678,13 @@ yaml_text = workflow_to_yaml(graph, tools=tools, initial=state, reducers=reducer
 
 ReAct edges (`_tool_call_name !=`) round-trip correctly, so an agent built in
 code can be emitted as declarative YAML.
+
+## See also
+
+- [`flow.yaml` reference](flow-yaml.md) — the authoring-layer document this
+  format compiles from.
+- [Choosing your abstraction](choosing-your-abstraction.md) — when to use which
+  layer.
+- [Node reference](../reference/nodes.md) — every `steps:` `type` and its config.
+- [Tools reference](../reference/tools.md) — every `tools:` type and its config.
+- [Providers reference](../reference/providers.md) — how provider resolution works.

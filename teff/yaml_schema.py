@@ -215,6 +215,8 @@ _VALIDATOR = jsonschema.Draft202012Validator(WORKFLOW_JSON_SCHEMA)
 FLOW_IDIOMS = (
     "llm",
     "transform",
+    "context_builder",
+    "append_assistant",
     "agent",
     "agent_step",
     "team",

@@ -31,10 +31,12 @@ not in prompts or node bodies.
 - [map_repair_plans](https://github.com/bzdvdn/teff/tree/master/examples/map_repair_plans/) — dynamic fan-out
   (`Map`) + `{key}` prompt templates.
 - Guides: [YAML workflows](../guide/yaml-workflows.md),
+  [Flow YAML (sugar)](../guide/flow-yaml.md),
   [Flow builder](../guide/flow-builder.md), [State](../guide/state.md),
   [Structured output](../guide/structured-output.md).
 
-*You should know:* how to write `workflow.yaml`, when to prefer YAML vs the
+*You should know:* how to write `workflow.yaml` (and when the concise
+`flow.yaml` idiom surface is a better fit), when to prefer YAML vs the
 Flow DSL, how reducers merge branch results, and how `Map` differs from
 `Parallel`.
 

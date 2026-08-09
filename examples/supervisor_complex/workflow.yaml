@@ -14,7 +14,7 @@ description: >-
                                             │ approve → final(now)
                                             └ rework ─► loop again
 
-  The operator approves with "approve", "отлично" or "ok" (any_of passes);
+  The operator approves with "approve", "excellent" or "ok" (any_of passes);
   any other word = rework, so the loop runs again.
 
 state:
@@ -25,7 +25,7 @@ state:
   initial:
     messages:
       - role: user
-        content: Реализуй функцию подсчёта суммы покупок.
+        content: Implement a function that calculates the total purchase sum.
     next_agent: ""
     supervisor_rounds: 0
     plan: ""
@@ -149,9 +149,9 @@ steps:
         - interrupt:
             id: approve
             key: approved
-            prompt: "Отправить код в работу? (approve / отлично / ok — да; любое другое — на доработку)"
+            prompt: "Ship the code? (approve / excellent / ok — yes; anything else — rework)"
             strategy:
-              any_of: [approve, отлично, ok]
+              any_of: [approve, excellent, ok]
               decision_key: decision
               pass_value: approve
               fail_value: rework

@@ -74,10 +74,12 @@ nav:
       - Concepts: getting-started/concepts.md
   - Guide:
       - YAML workflows: guide/yaml-workflows.md
+      - Flow YAML (sugar): guide/flow-yaml.md
       - Choosing your abstraction: guide/choosing-your-abstraction.md
       - Core entities: guide/core-entities.md
       - Best practices: guide/best-practices.md
       - Flow builder: guide/flow-builder.md
+      - Graph API (low level): guide/graph-api.md
       - Command routing: guide/commands.md
       - Agents: guide/agents.md
       - Multi-agent supervisors: guide/supervisors.md

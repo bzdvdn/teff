@@ -1,0 +1,3 @@
+# teff.schema
+
+::: teff.schema

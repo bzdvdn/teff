@@ -40,6 +40,25 @@ def _h_agent(flow: "Flow", payload: dict) -> None:
     flow.step(sub, id=f"agent-{pid}" if pid else None)
 
 
+def _h_context_builder(flow: "Flow", payload: dict) -> None:
+    """Compile a context-composition step::
+
+    - context_builder: {id: compose, sections: {plan: Plan},
+                        messages_key: messages, output_key: input}
+    """
+    pid = _pop_id(payload)
+    flow.context_builder(**payload, id=pid)
+
+
+def _h_append_assistant(flow: "Flow", payload: dict) -> None:
+    """Compile an append-reply step::
+
+    - append_assistant: {output_key: draft, messages_key: messages}
+    """
+    pid = _pop_id(payload)
+    flow.append_assistant(**payload, id=pid)
+
+
 def _h_type(flow: "Flow", payload: dict) -> None:
     """Compile an arbitrary registered node type as one step::
 

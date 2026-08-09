@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://pypi.org/project/teff/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-*Durable AI workflows as data.*
+_Durable AI workflows as data._
 
 Every agent project has the same arc: one `for` loop of LLM calls feels fine,
 a second agent needs branching, a third needs retries and state — and soon
@@ -14,7 +14,7 @@ the logic of your product is buried in order-6 loops of `async` code that
 nobody can read, nobody can resume, and nobody can debug.
 
 Teff is the other pattern: **the workflow is data**. Branching, retries,
-checkpointing and pausing live in the *structure* of a graph, not in the body
+checkpointing and pausing live in the _structure_ of a graph, not in the body
 of your functions. Run it — and when the process dies, it picks up exactly
 where it stopped.
 
@@ -22,8 +22,9 @@ Build stateful AI agents as **YAML or Python graphs** and run them safely in
 production:
 
 ```text
-                 YAML / Python
-                       │
+            YAML            Flow (Python)
+               │                 │
+               └───────┬─────────┘
                        ▼
                   ┌─────────┐
                   │  Graph  │
@@ -35,9 +36,9 @@ production:
           │            │            │
           └────────────┼────────────┘
                        ▼
-                 Checkpoint
+                  Checkpoint
                        │
-                 crash / pause
+                  crash / pause
                        │
                        ▼
                     Resume
@@ -59,30 +60,29 @@ artifact — generated or modified independently from your application code:
 ```yaml
 name: research
 
+default_model: llama3.1:8b
+default_provider: ollama
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
 state:
   initial:
     input: "What's new in durable AI workflows?"
-  schema:
-    messages:
-      reducer: append
-      type: list
 
 steps:
-  - id: research
-    type: react_agent
-    config:
-      prompt: "Research {input}"
+  - agent:
+      id: research
+      system: "Research {input}"
       output_key: research
 
-  - id: summarize
-    type: llm_chat
-    config:
-      prompt: "Summarize {research}"
+  - llm:
+      id: summarize
+      system: "Summarize {research}"
       output_key: summary
-
-edges:
-  - from: research
-    to: summarize
 ```
 
 Run it from the terminal:
@@ -149,21 +149,43 @@ result = await graph.run({"text": "Hello world"})
 Every node stays inspectable and the whole thing is one YAML export away —
 see [Flow builder](docs/guide/flow-builder.md).
 
+Beneath the `Flow` builder sits the low-level **Graph API** — `Graph` +
+`Node` + `Edge` — for hand-wiring every arrow, a custom `Node` subclass, or
+`Command` routing when you need full control. YAML, `Flow` and `Graph` all
+compile to the same runnable graph:
+
+```python
+from teff.graph import Edge, Graph
+from teff.node import Transform
+
+graph = Graph(
+    nodes={
+        "trim": Transform(action="trim", input_key="title", output_key="loud"),
+        "upper": Transform(action="uppercase", input_key="loud", output_key="result"),
+    },
+    edges=[Edge("trim", "upper")],
+    entry_point="trim",
+)
+result = await graph.run(state={"title": "  hello  "})
+```
+
+See [Graph API (low level)](docs/guide/graph-api.md).
+
 ### Teff vs the alternatives
 
 Not a comparison of names, but of patterns — the two ways people build agents
 today, and the one Teff offers:
 
-| | Imperative loops | Big platform SDKs | **Teff** |
-| --- | --- | --- | --- |
-| Flow is visible | No (in code) | Usually yes | **First-class — the graph IS the app** |
-| Durable / resumable | No | Yes, often on their runtime | **Yes, no server: file/SQLite/PG** |
-| Crash recovery | Start over | Resume at job level | **Resume from the failed node** |
-| Human-in-the-loop | Hand-rolled | Available | `Interrupt` → resume, a step like any other |
-| Dependencies | Your code only | Heavy SDK + runtime | **4 core runtime deps, no SDKs, raw HTTP** |
-| Embeddable in your app | Yes | Only on their platform | **Yes — you import us, a library** |
-| Observability | print/log | Their dashboard, you write adapters | **Built in — traces, token usage, cost** |
-| Vendor lock-in | None | Strong | **None** |
+|                        | Imperative loops | Big platform SDKs                   | **Teff**                                    |
+| ---------------------- | ---------------- | ----------------------------------- | ------------------------------------------- |
+| Flow is visible        | No (in code)     | Usually yes                         | **First-class — the graph IS the app**      |
+| Durable / resumable    | No               | Yes, often on their runtime         | **Yes, no server: file/SQLite/PG**          |
+| Crash recovery         | Start over       | Resume at job level                 | **Resume from the failed node**             |
+| Human-in-the-loop      | Hand-rolled      | Available                           | `Interrupt` → resume, a step like any other |
+| Dependencies           | Your code only   | Heavy SDK + runtime                 | **4 core runtime deps, no SDKs, raw HTTP**  |
+| Embeddable in your app | Yes              | Only on their platform              | **Yes — you import us, a library**          |
+| Observability          | print/log        | Their dashboard, you write adapters | **Built in — traces, token usage, cost**    |
+| Vendor lock-in         | None             | Strong                              | **None**                                    |
 
 The honest trade-off: you don't get a "library of literally everything" — you
 get structure, durability and instrumentability, without operating any server.
@@ -204,8 +226,8 @@ uv run teff run --file examples/hello_workflow/workflow.yaml
 
 In action — a durable LLM run, resume and graph render (needs local Ollama):
 
-| Run + durable resume + graph (`hello_llm` example) |
-| --- |
+| Run + durable resume + graph (`hello_llm` example)                                      |
+| --------------------------------------------------------------------------------------- |
 | ![Teff CLI demo: run, resume, and graph an LLM workflow](docs/assets/hello-llm-cli.gif) |
 
 Human-in-the-loop is a first-class citizen — the whole workflow, as data:
@@ -213,8 +235,8 @@ Human-in-the-loop is a first-class citizen — the whole workflow, as data:
 ```yaml
 name: poem_chat
 state:
-  initial: {messages: [], poem: "", critic: {}, critic_note: "", decision: ""}
-checkpoint: {type: file, path: data/checkpoints}
+  initial: { messages: [], poem: "", critic: {}, critic_note: "", decision: "" }
+checkpoint: { type: file, path: data/checkpoints }
 
 providers:
   - name: ollama
@@ -222,80 +244,109 @@ providers:
     base_url: http://localhost:11434
     chat_path: /api/chat
 
+default_provider: ollama
+default_model: llama3.1:8b
+
 steps:
-  - id: compose        # topic + latest user feedback -> input
-    type: context_builder
-    config:
+  - context_builder: # topic + latest user feedback -> input
+      id: compose
       messages_key: messages
-      sections: {poem: "Current poem", critic_note: "Critic feedback", answer: "New user feedback"}
+      sections:
+        poem: "Current poem"
+        critic_note: "Critic feedback"
+        answer: "New user feedback"
       output_key: topic
       reset_keys: [poem, critic_note, answer]
 
-  - id: poet
-    type: llm_chat
-    config:
-      provider: ollama
-      model: llama3.1:8b
-      system: "You are an outstanding poet. Below is the topic and, if present, feedback — take it into account and rewrite the poem accordingly. Reply with ONLY the poem text."
+  - llm: # a step is just `type: config` — no edges to spell out
+      id: poet
+      system: >-
+        You are an outstanding poet. Below is the topic and, if present,
+        feedback — take it into account and rewrite the poem accordingly.
+        Reply with ONLY the poem text, no explanations, no headings.
       prompt: "{topic}"
       output_key: poem
 
-  - id: critic
-    type: llm_chat
-    config:
-      provider: ollama
-      model: llama3.1:8b
-      system: "You are a demanding poetry critic. Reply with a single JSON object with fields 'verdict' ('ok' or 'fix') and 'note' (one-two short suggestions, or empty when ok)."
-      prompt: "Poem:\n{poem}\n\nReply with JSON."
+  - llm:
+      id: critic
+      system: >-
+        You are a demanding poetry critic. Judge the poem: rhyme, rhythm,
+        imagery. Reply with a single JSON object with fields "verdict" and
+        "note": "verdict" is "ok" or "fix"; "note" is one-two short sentences
+        telling the poet what to improve (or an empty string when it is ok).
+      prompt: |-
+        Poem:
+        {poem}
+
+        Reply with JSON.
       output_key: critic
       parse: true
 
-  - id: take_note
-    type: transform
-    config: {action: json_get, input_key: critic, field: note, output_key: critic_note}
+  - transform:
+      {
+        id: take_note,
+        action: json_get,
+        input_key: critic,
+        field: note,
+        output_key: critic_note,
+      }
 
-  - id: show
-    type: append_assistant
-    config: {output_key: poem, messages_key: messages}
+  - append_assistant: {output_key: poem, messages_key: messages}
 
-  - id: approval
-    type: interrupt
-    config:
+  - interrupt:
+      id: approval
       key: answer
-      prompt: "Here is the poem:\n\n{poem}\n\n---\n\nDo you like it? Say what you think (yes / of course / make it shorter / no)…"
+      prompt: >-
+        Here is the poem:
+
+        {poem}
+
+        ---
+
+        Do you like it? Say what you think (yes / of course / make it shorter
+        / no)…
       strategy:
-        llm:           # judges free-form answers - no hard-coded keywords
+        llm: # judges free-form answers - no hard-coded keywords
           system: >-
-            Classify how the user feels about the poem. ok=true for "yes",
-            "sure", "not bad", "perfect". ok=false when they want a rewrite.
+            Classify how the user feels about the poem they were just shown.
+            Return one JSON object with a boolean "ok" field.
+            ok=true means the user accepts the poem. Examples of acceptance:
+            "yes", "sure", "perfect", "nice", "not bad", "keep it".
+            ok=false means they want changes or a rewrite. Examples of
+            rejection: "no", "rewrite", "shorter", "change it", "the other".
+            When in doubt, prefer ok=true for mildly positive or ambiguous
+            replies and ok=false only when a change is clearly requested.
           user: 'The user said: "{answer}". The poem: {poem}'
           model: qwen2.5:7b
           provider: ollama
-          schema: {type: object, properties: {ok: {type: boolean}}, required: [ok]}
+          schema:
+            type: object
+            properties: { ok: { type: boolean } }
+            required: [ok]
         decision_key: decision
         pass_value: keep
         fail_value: rewrite
 
-  - id: route
-    type: command
-    config:
+  - route:
+      id: route
       routes:
-        - {when: "decision=keep", goto: done}
-        - {when: "decision=rewrite", goto: compose}
+        - { when: "decision=keep", goto: done }
+        - { when: "decision=rewrite", goto: compose }
       goto: approval
 
-  - id: done
-    type: transform
-    config: {action: value, value: "Poem done - hope you like it!", output_key: done}
-
-edges:
-  - {from: compose, to: poet}
-  - {from: poet, to: critic}
-  - {from: critic, to: take_note}
-  - {from: take_note, to: show}
-  - {from: show, to: approval}
-  - {from: approval, to: route}
+  - transform:
+      {
+        id: done,
+        action: value,
+        value: "Poem done — hope you like it!",
+        output_key: done,
+      }
 ```
+
+The steps above chain top-to-bottom automatically — a `context_builder`
+injects the topic + latest user feedback into `compose`, and the loop simply
+returns there; the router, loop and human gate are plain steps, not
+control-flow in code.
 
 ```bash
 teff chat examples/poem_chat/workflow.yaml
@@ -304,8 +355,8 @@ teff chat examples/poem_chat/workflow.yaml
 # "yes, perfect"               → done
 ```
 
-| The same workflow, as a chat (`poem_chat` example) |
-| --- |
+| The same workflow, as a chat (`poem_chat` example)                                       |
+| ---------------------------------------------------------------------------------------- |
 | ![Teff CLI demo: two-agent poem chat with human approval](docs/assets/poem-chat-cli.gif) |
 
 ## Teff vs application code
@@ -381,14 +432,14 @@ uvx teff -f workflow.yaml     # run on the fly without installing
 
 Official images on Docker Hub for every `v*` tag — one build, six variants:
 
-| Image | Contents | Commands |
-| ----- | -------- | ----- |
-| `bzdvdn/teff` | core + `teff[tools]` | the `teff` CLI |
-| `bzdvdn/teff-fastapi` | core + `teff[fastapi]` | a FastAPI server |
-| `bzdvdn/teff-worker` | core + `teff[queue]` | celery workers |
-| `bzdvdn/teff-obs` | core + `teff[observability]` | `teff obs-server` dashboard |
-| `bzdvdn/teff-rag` | core + `teff[stores-qdrant,tools,rag-pdf]` | slim RAG build |
-| `bzdvdn/teff-all` | every `docs`-less extra | full optional surface |
+| Image                 | Contents                                   | Commands                    |
+| --------------------- | ------------------------------------------ | --------------------------- |
+| `bzdvdn/teff`         | core + `teff[tools]`                       | the `teff` CLI              |
+| `bzdvdn/teff-fastapi` | core + `teff[fastapi]`                     | a FastAPI server            |
+| `bzdvdn/teff-worker`  | core + `teff[queue]`                       | celery workers              |
+| `bzdvdn/teff-obs`     | core + `teff[observability]`               | `teff obs-server` dashboard |
+| `bzdvdn/teff-rag`     | core + `teff[stores-qdrant,tools,rag-pdf]` | slim RAG build              |
+| `bzdvdn/teff-all`     | every `docs`-less extra                    | full optional surface       |
 
 ```bash
 docker run --rm -v "$PWD:/workflow" bzdvdn/teff:latest run -f /workflow/workflow.yaml
@@ -415,9 +466,13 @@ uv run mkdocs build              # build these docs
 
 ## Status
 
-**0.1.1** — patch release (docs & package metadata). First stable release:
-0.1.0. The public API, YAML surface and CLI are stable; breaking changes
-require a minor version bump.
+**0.2.0** — added the `flow.yaml` authoring layer: a sugar surface mirroring
+the Python `Flow` builder (single-key idiom steps, `team:` / `supervisor:`,
+`parallel:` / `map:` / `loop:`, `interrupt:` + `strategy:`), compiled via
+`teff build -f flow.yaml` into the low-level `graph.yaml` artifact; plus the
+`flow.team()` Python API and `AgentRole`. Every example now ships a
+validated sugar + low-level twin. The low-level `workflow.yaml` surface
+remains unchanged and stable.
 
 Coming next: durable conversations with built-in memory, tighter tool
 ergonomics, and more vector stores + plugins. Want to shape the roadmap or

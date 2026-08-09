@@ -51,6 +51,26 @@ flow.transform(Transform(action="value", value="done", output_key="status"))
 
 Passing both an instance and kwargs raises `TypeError`.
 
+### `context_builder(...)` and `append_assistant(...)`
+
+Shorthands for the turn-routing pair used by `agent_step`: compose a
+plain-text `input` from state (each section as `<label>:\n<value>` plus the
+latest user message), then append the agent's reply back to the shared
+conversation:
+
+```python
+flow.context_builder(
+    sections={"plan": "Plan", "summary": "Summary"},
+    messages_key="messages",
+    output_key="input",
+)
+flow.append_assistant(output_key="draft", messages_key="messages")
+```
+
+`context_builder` accepts `sections`, `messages_key`, `output_key` and
+`reset_keys` (scratch state cleared before the agent runs); both also accept
+a pre-built instance instead of kwargs.
+
 ### `add_flow(flow, ...)` / `SubFlow`
 
 Embed a whole sub-flow as a single node. The inner `Flow` is compiled and
@@ -272,6 +292,8 @@ The result validates with `teff validate` and round-trips through
 | ------ | ------ | --- |
 | `step(node)` | one node in the chain | [Nodes](../reference/nodes.md) |
 | `llm(...)` / `transform(...)` | shorthand for `LLM`/`Transform` | [Nodes](../reference/nodes.md) |
+| `context_builder(...)` / `append_assistant(...)` | turn routing pair | [Nodes](../reference/nodes.md) |
+| `supervisor(...)` | supervisor decider | [Supervisors](supervisors.md) |
 | `add_flow(flow)` | nested `SubFlow` node | — |
 | `branch(key, *cases)` | conditional edges | [State](state.md) |
 | `default(node)` / `converge(node)` | fallback / rejoin | — |

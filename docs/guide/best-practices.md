@@ -4,9 +4,27 @@ Practical guidance for building reliable, testable, observable Teff
 workflows. These rules converge from the framework's own examples and
 tests; follow them for maintainable agents.
 
+## Choose the right document format first
+
+Teff ships two declarative formats, auto-detected by the CLI and the loaders
+(`looks_like_flow`). Pick the smaller one that expresses your problem, and
+escalate only when you need explicitness:
+
+| You want… | Use | Reference |
+| --------- | --- | --------- |
+| Concise idioms — teams, loops, gates — with less boilerplate | **`flow.yaml`** | [flow.yaml reference](flow-yaml.md) |
+| Every node and arrow explicit, or a compiled/deployable artifact | **`graph.yaml`** | [graph.yaml reference](yaml-workflows.md) |
+| Code-first construction that still exports to YAML | **`Flow` builder** | [Flow builder](flow-builder.md) |
+| Custom node classes, dynamic wiring, full runtime control | **`Graph` API** | [Graph API](graph-api.md) |
+
+Rule of thumb: author in `flow.yaml`, inspect and review the compiled
+`graph.yaml` (`teff graph -m`), and export (`Flow.to_yaml()`) when ops needs
+the artifact. Both formats validate with `teff validate`, so switching is
+cheap — the compiled output always targets the same node/edge vocabulary.
+
 ## Express as much as possible in YAML
 
-The declarative `workflow.yaml` format covers graph topology,
+The declarative YAML formats cover graph topology,
 LLM/ReAct/supervisor nodes, conditional edges, reducers, built-in tools,
 RAG & memory stores, `retry:`, `observability:`, `checkpoint:`, `hooks:`
 and `${ENV}` secrets. Start there — a YAML workflow is inspectable
@@ -22,6 +40,20 @@ Reach for Python (the `Flow` builder or bare `Graph`) only when you need:
 Rule of thumb: if it's graph shape or configuration, put it in YAML; if
 it's a bespoke piece of logic, isolate it in a plugin file and reference it
 by name.
+
+## Reference the field tables when you change a file
+
+The two format references list every key, its type, its default and which
+code path consumes it — use them to find *where to change what*:
+
+- [`flow.yaml`](flow-yaml.md) — top-level keys, every idiom (`llm:`,
+  `transform:`, `context_builder:`, `append_assistant:`, `agent:`, `team:`,
+  `supervisor:`, `parallel:`, `map:`, `loop:`, `interrupt:`, `branch:`,
+  `route:`, `type:`), node-level steps, `providers:`, `tools:`, `state:`,
+  `checkpoint:`, `hooks:`, `observability:`.
+- [`graph.yaml`](yaml-workflows.md) — top-level keys, `steps:` node types,
+  `edges:` conditions, `retry:`, subflows, `include:`, `command`, `loop`,
+  interrupts with `strategy:`.
 
 ## Keep nodes small and functions pure
 
@@ -79,11 +111,13 @@ and test prompt fragility separately with the evaluation harness
 
 ## Structure a real app
 
-- `workflow.yaml` — the graph + config;
+- `workflow.yaml` (or `flow.yaml`) — the graph + config;
 - `plugins/` — registered custom nodes/tools/hooks;
 - `prompts/` — prompt text kept out of code;
 - `data/` — checkpoints, traces, stores (gitignored);
 - `tests/` — state/harness tests.
 
 Keep prompts in their own modules so they can be versioned, reviewed and
-swapped independently of logic.
+swapped independently of logic. Name the file `flow.yaml` when you author in
+the idiom surface and `graph.yaml` for the compiled/explicit form — both are
+auto-detected, so renaming is safe.

@@ -121,7 +121,14 @@ from teff.flow.compiler._flow import (
     _h_parallel,
     _h_route,
 )
-from teff.flow.compiler._nodes import _h_agent, _h_llm, _h_transform, _h_type
+from teff.flow.compiler._nodes import (
+    _h_agent,
+    _h_append_assistant,
+    _h_context_builder,
+    _h_llm,
+    _h_transform,
+    _h_type,
+)
 from teff.flow.compiler._state import _build_state
 from teff.flow.compiler._team import _h_supervise, _h_supervisor, _h_team
 from teff.flow.flow import Flow
@@ -192,6 +199,8 @@ def _compile_step(flow: Flow, step: typing.Any) -> None:
 _HANDLERS = {
     "llm": _h_llm,
     "transform": _h_transform,
+    "context_builder": _h_context_builder,
+    "append_assistant": _h_append_assistant,
     "agent": _h_agent,
     "agent_step": _h_agent,
     "team": _h_team,
@@ -270,7 +279,7 @@ def build_flow_to_yaml(path: str, output: str | None = None) -> str:
     Returns the compiled YAML text; when *output* is given the text is
     also written to that path.
     """
-    from ..yaml import workflow_to_yaml
+    from ...yaml import workflow_to_yaml
 
     data = load_flow_yaml(path)
     base_dir = os.path.dirname(os.path.abspath(path))

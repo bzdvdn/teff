@@ -1009,6 +1009,46 @@ class TestNodeIds:
         assert all(nid.startswith("planner/") for nid in inner_ids)
         assert sub._graph.entry_point == "planner/context_builder_1"
 
+    def test_context_builder_and_append_assistant_helpers(self):
+        from teff.flow import Flow
+
+        flow = Flow()
+        flow.context_builder(
+            sections={"plan": "Plan", "summary": "Summary"},
+            messages_key="messages",
+            output_key="input",
+            id="compose",
+        )
+        flow.append_assistant(output_key="draft", messages_key="messages", id="append")
+        g = flow.compile()
+        assert g.entry_point == "compose"
+        assert list(g.nodes) == ["compose", "append"]
+        assert g.nodes["compose"].type == "context_builder"
+        assert g.nodes["append"].type == "append_assistant"
+        assert g.nodes["compose"].config["sections"] == {
+            "plan": "Plan",
+            "summary": "Summary",
+        }
+        assert g.nodes["append"].config["output_key"] == "draft"
+
+    def test_context_builder_helper_rejects_both(self):
+        from teff.flow import Flow
+        from teff.node.context import ContextBuilder
+
+        flow = Flow()
+        with pytest.raises(TypeError):
+            flow.context_builder(
+                ContextBuilder(sections={"k": "K"}), sections={"k2": "K2"}
+            )
+
+    def test_append_assistant_helper_rejects_wrong_type(self):
+        from teff.flow import Flow
+        from teff.node.context import ContextBuilder
+
+        flow = Flow()
+        with pytest.raises(TypeError):
+            flow.append_assistant(ContextBuilder())
+
     def test_duplicate_id_raises(self):
         from teff.flow import Flow
         from teff.node import Transform

@@ -36,17 +36,15 @@ default_provider: ollama
 default_model: llama3.1:8b
 
 steps:
-  - type:
+  - context_builder:
       id: compose
-      type: context_builder
-      config:
-        messages_key: messages
-        sections:
-          poem: "Current poem"
-          critic_note: "Critic feedback"
-          answer: "New user feedback"
-        output_key: topic
-        reset_keys: [poem, critic_note, answer]
+      messages_key: messages
+      sections:
+        poem: "Current poem"
+        critic_note: "Critic feedback"
+        answer: "New user feedback"
+      output_key: topic
+      reset_keys: [poem, critic_note, answer]
 
   - llm:
       id: poet
@@ -75,7 +73,7 @@ steps:
   - transform: {id: take_note, action: json_get, input_key: critic, field: note,
                 output_key: critic_note}
 
-  - type: {type: append_assistant, config: {output_key: poem, messages_key: messages}}
+  - append_assistant: {output_key: poem, messages_key: messages}
 
   - interrupt:
       id: approval

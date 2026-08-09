@@ -1,9 +1,8 @@
 """Service-desk graph builder — the default supervisor chat router.
 
-A single :class:`teff.node.Supervisor` (added with
-:meth:`teff.flow.Flow.supervisor` and configured entirely through
-``route_keys`` / ``done_keys`` / ``fallback_agent`` / ``max_rounds`` — no
-subclass) dispatches every request to one specialist::
+A single :class:`teff.node.Supervisor` (composed with
+:meth:`teff.flow.Flow.team` — the one-call team recipe) dispatches every
+request to one specialist::
 
     reset ─► supervisor ─ next_agent=billing ─► [ReAct billing] ─┐
        ▲         ▲                                             │
@@ -12,7 +11,9 @@ subclass) dispatches every request to one specialist::
         (next_agent=fallback → ReAct fallback)
         (next_agent=finish → final LLM, ends the turn)
 
-Guards demonstrated here:
+``team()`` wires the supervisor decider + one routed role per specialist in
+a single step; it is the compact twin of an explicit
+``supervisor()`` + ``route()`` pair.  Guards demonstrated here:
 - ``done_keys`` — once *any* specialist answered, the turn finishes
   deterministically without another supervisor call;
 - ``fallback_agent`` — a premature ``finish`` on an empty turn routes to
@@ -23,10 +24,11 @@ Guards demonstrated here:
   honours it (resume continues straight back at the supervisor).
 
 Each specialist is a self-contained ReAct agent
-(:func:`teff.flow.agent_step`) writing into its own state slot, scoped to a
-single knowledge-base tool (``use_tools=<allowlist>``).  The function returns
-the assembled graph *and* the tools pool so the caller can hand it to
-``graph.run(tools=...)`` / ``Assistant``.
+(:class:`teff.flow.AgentRole`, built on :func:`teff.flow.agent_step`)
+writing into its own state slot, scoped to a single knowledge-base tool
+(``use_tools=<allowlist>``).  The function returns the assembled graph
+*and* the tools pool so the caller can hand it to ``graph.run(tools=...)``
+/ ``Assistant``.
 """
 
 from __future__ import annotations
@@ -41,7 +43,7 @@ from service_desk.graphs.prompts import (
     SUPERVISOR_PROMPT,
 )
 from service_desk.tools import KNOWLEDGE_TOOLS, build_tools
-from teff.flow import Flow, SubFlow, agent_step
+from teff.flow import AgentRole, Flow
 from teff.node import LLM, ContextBuilder, Interrupt
 from teff.provider import ProviderRegistry
 
@@ -87,15 +89,12 @@ def build_flow(
     :class:`~teff.Assistant`.
     """
 
-    def agent(system: str, slot: str, use_tools: str | None = None) -> SubFlow:
-        return agent_step(
+    def role(system: str, slot: str, use_tools: str | None = None) -> AgentRole:
+        return AgentRole(
             system,
-            slot,
-            model=model,
-            provider=provider,
+            output_key=slot,
             sections=AGENT_SECTIONS,
             use_tools=use_tools if use_tools else None,
-            id=slot,
         )
 
     if knowledge is None:
@@ -110,9 +109,29 @@ def build_flow(
         id="reset",
     )
 
-    # The default chat supervisor: one-word routing + guard configuration.
-    flow.supervisor(
-        system=SUPERVISOR_PROMPT,
+    # The default chat supervisor, composed in one call: the decider plus one
+    # routed agent per role, the deploy gateway as a chain inside its route.
+    flow.team(
+        SUPERVISOR_PROMPT,
+        roles={
+            "billing": role(BILLING_PROMPT, "billing", KNOWLEDGE_TOOLS["billing"]),
+            "incident": role(INCIDENT_PROMPT, "incident", KNOWLEDGE_TOOLS["incident"]),
+            # Deploy carries a human gateway: the specialist plans the release,
+            # then the run pauses and the operator's answer is read back by the
+            # supervisor (which finishes) and by the final summary.
+            "deploy": [
+                role(DEPLOY_PROMPT, "deploy", KNOWLEDGE_TOOLS["deploy"]),
+                Interrupt(
+                    key="deploy_approved",
+                    prompt=(
+                        "План выкатки: {deploy}\n\n"
+                        "Подтверждаешь выкатку в прод? Ответь: да или нет."
+                    ),
+                    id="approve",
+                ),
+            ],
+            "fallback": role(FALLBACK_PROMPT, "fallback"),
+        },
         model=model,
         provider=provider,
         sections=AGENT_SECTIONS,
@@ -122,14 +141,10 @@ def build_flow(
             "deploy": "deploy",
             "fallback": "fallback",
         },
-        done_keys={"billing", "incident", "deploy", "fallback"},
+        done_keys=["billing", "incident", "deploy", "fallback"],
         done_mode="any",
-        fallback_agent="fallback",
+        fallback="fallback",
         max_rounds=8,
-        id="supervisor",
-    )
-    flow.route(
-        "next_agent",
         finish=LLM(
             model=model,
             provider=provider,
@@ -144,23 +159,7 @@ def build_flow(
             output_key="final",
             id="final",
         ),
-        billing=agent(BILLING_PROMPT, "billing", KNOWLEDGE_TOOLS["billing"]),
-        incident=agent(INCIDENT_PROMPT, "incident", KNOWLEDGE_TOOLS["incident"]),
-        # Deploy carries a human gateway: the specialist plans the release,
-        # then the run pauses and the operator's answer is read back by the
-        # supervisor (which finishes) and by the final summary.
-        deploy=[
-            agent(DEPLOY_PROMPT, "deploy", KNOWLEDGE_TOOLS["deploy"]),
-            Interrupt(
-                key="deploy_approved",
-                prompt=(
-                    "План выкатки: {deploy}\n\n"
-                    "Подтверждаешь выкатку в прод? Ответь: да или нет."
-                ),
-                id="approve",
-            ),
-        ],
-        fallback=agent(FALLBACK_PROMPT, "fallback"),
+        id="supervisor",
     )
 
     return flow, tools

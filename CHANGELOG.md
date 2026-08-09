@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.2.0 — flow.yaml authoring layer
+
+This release adds a second, higher-level YAML surface — `flow.yaml` — that
+mirrors the Python `Flow` builder, plus a Python `team()` API for
+supervisor-based multi-agent teams. The classic low-level `workflow.yaml`
+(`id`/`type` steps + `edges`) is unchanged and still the compiled artifact.
+
+Highlights:
+
+- **`flow.yaml` (sugar / authoring layer)** — single-key idiom steps that
+  expand into the low-level graph:
+  - `llm:` / `transform:` / `agent_step:` / `agent:` linear steps.
+  - `context_builder:` / `append_assistant:` — the turn-routing pair as
+    first-class idioms (mirroring the new `flow.context_builder()` /
+    `flow.append_assistant()` methods), replacing the `type:`
+    `{type: context_builder, ...}` boilerplate in examples and the README.
+  - `team:` — a `Supervisor` decider plus one routed agent per role in a
+    single block; `supervisor:` / `supervise:` idioms for explicit
+    supervisor loops.
+  - `parallel:` / `map:` / `loop:` / `branch:` / `route:` / `interrupt:`
+    control-flow idioms, with `interrupt:` accepting the `strategy:`
+    shorthand (`equals` / `any_of` / `regex` / `llm`).
+  - Top-level `default_provider` / `default_model` defaults inherited by
+    every step, plus `providers:`, `tools:`, `state:`, `checkpoint:`,
+    `hooks:`, `observability:`, `include:` and `${ENV}` interpolation.
+  - `teff run -f flow.yaml`, `teff validate -f flow.yaml`,
+    `teff graph -f flow.yaml` auto-detect the format; `teff build -f
+    flow.yaml` compiles it into the low-level `graph.yaml` artifact
+    (`build_flow_to_yaml`), including nested `Map` / `Parallel` / `Loop` /
+    `SubFlow` configs.
+- **`flow.team()`** — programmatic twin of the `team:` idiom: builds the
+  `Supervisor` decider, one routed agent per role and the supervisor loop in
+  one call. Roles are `AgentRole` instances (the recommended spelling), plain
+  dict recipes, `Node` / `SubFlow` objects, or nested `Flow`s.
+- **`AgentRole`** (`teff.flow.AgentRole`) — a system prompt + `output_key`
+  (+ optional `use_tools`) rendered as a routed `agent_step` SubFlow; also
+  constructed from a YAML role mapping for parity.
+- **Two-layer validation** — `validate_flow` / `validate_flow_file` for the
+  authoring surface (sibling of `validate_workflow`); the CLI picks the
+  right validator from the file shape.
+- **`load_workflow_document`** — reads a workflow document with env refs and
+  `include:` blocks resolved, without building nodes or tools (used by the
+  example parity tests).
+- **`include:` improvements** — idiom steps that carry their id inside a
+  single-key payload (`transform: {id: split, ...}`) are now id-prefixed too,
+  so a sugar document can be included several times without collisions.
+- **Example parity** — every sugar `workflow.yaml` example ships a low-level
+  `graph.yaml` twin; `tests/test_examples_parity.py` checks that each pair
+  loads and validates on its own surface, the twin is never sugar, and that
+  both layers agree on tools and initial state. `tests/test_flow_yaml.py`
+  (1000+ lines) covers the idioms, defaults, validation and
+  flow.yaml → graph round-trips.
+- Fix: `build_flow_to_yaml` used a wrong relative import
+  (`from ..yaml import workflow_to_yaml`), which raised `ModuleNotFoundError`
+  at runtime — now resolves to `teff.yaml`.
+- Docs: `docs/guide/flow-yaml.md` (full `flow.yaml` key reference),
+  `docs/guide/yaml-workflows.md` expanded to a complete `graph.yaml`
+  reference, `docs/guide/best-practices.md` updated with a format-selection
+  section. Example messages translated from Russian to English.
+
+## 0.1.1 — docs & metadata refresh
+
+Documentation, recipes and metadata updates only; no runtime changes.
+
+- New guides: `why-teff.md`, recipes for FastAPI agents, KB assistants and
+  more; `hello_llm` / `poem_chat` examples.
+- Metadata and `uv.lock` refresh for publishing.
+
 ## 0.1.0 — first stable release
 
 Two alphas of development polish went into this line. From here the public
