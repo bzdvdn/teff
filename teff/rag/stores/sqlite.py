@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 
 from teff.rag.base import VectorStore, cosine_similarity, finalize_results
 
@@ -24,6 +25,7 @@ class SQLiteVectorStore(VectorStore):
     def __init__(self, path: str = "./vectors.db", dim: int | None = None):
         self.path = path
         self.dim = dim
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(path)
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS vectors ("

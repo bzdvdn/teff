@@ -275,6 +275,18 @@ class TestEmbedder:
 
 class TestSQLiteVectorStore:
     @pytest.mark.asyncio
+    async def test_creates_parent_directory(self, tmp_path):
+        from teff.rag.stores import SQLiteVectorStore
+
+        db = tmp_path / "nested" / "dir" / "v.db"
+        s = SQLiteVectorStore(path=str(db), dim=3)
+        assert db.is_file()
+        await s.add([("d1", [1.0, 0, 0], {"text": "hello"})])
+        results = await s.search([1.0, 0, 0], k=1)
+        assert results[0][0] == "d1"
+        s.close()
+
+    @pytest.mark.asyncio
     async def test_persists_across_instances(self, tmp_path):
         from teff.rag.stores import SQLiteVectorStore
 

@@ -55,6 +55,10 @@ Highlights:
 - Fix: `build_flow_to_yaml` used a wrong relative import
   (`from ..yaml import workflow_to_yaml`), which raised `ModuleNotFoundError`
   at runtime — now resolves to `teff.yaml`.
+- Fix: `SQLiteVectorStore` failed with `sqlite3.OperationalError: unable to
+  open database file` when its `store.path` pointed into a directory that did
+  not exist yet (e.g. `data/vectors.db` on a fresh checkout) — the store now
+  creates the parent directory, matching `SQLiteCheckpointer`.
 - Docs: `docs/guide/flow-yaml.md` (full `flow.yaml` key reference),
   `docs/guide/yaml-workflows.md` expanded to a complete `graph.yaml`
   reference, `docs/guide/best-practices.md` updated with a format-selection
