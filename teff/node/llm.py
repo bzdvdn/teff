@@ -73,8 +73,8 @@ class LLM(Node):
         system: System prompt.  Supports ``{key}`` placeholders rendered
             from state (see :func:`teff.prompt.render_template`).
         prompt: User prompt template.  Supports ``{key}`` placeholders
-            rendered from state, e.g. ``"составь план для ремонта {type} "
-            "на сумму {summ}"``.  Overrides *input_key* when set.
+            rendered from state, e.g. ``"create a repair plan for {type} "
+            "up to {summ}"``.  Overrides *input_key* when set.
         input_key: State key for user message (default: whole state).
         output_key: State key for the response (default ``"output"``).
         provider: Provider name (``"openai"``, ``"ollama"``, etc.).

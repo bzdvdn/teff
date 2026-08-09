@@ -37,7 +37,7 @@ class Extract:
     extraction half of a ``done`` chain::
 
         extractor = Extract.model(
-            system="Ты извлекаешь данные проекта...",
+            system="You extract project data...",
             schema=PROJECT_INFO_SCHEMA,
             model="llama3.1:8b",
             provider="ollama",

@@ -76,6 +76,8 @@ class Flow:
         self._branch_ends: list[str] = []
         self._route_terminates = False
         self._guarded_step: str | None = None
+        self._loop_labels: dict[str, str] = {}
+        self._loop_decider: str | None = None
 
     def _next_id(self, node: Node, id_hint: str | None = None) -> str:
         self._counter += 1
@@ -112,7 +114,17 @@ class Flow:
             return []
         if isinstance(node_or_chain, Node):
             return [node_or_chain]
-        return list(node_or_chain)
+
+        def to_node(item):
+            if isinstance(item, Node):
+                return item
+            if callable(item):
+                return make_function_node(item)
+            raise TypeError(
+                f"expected Node or callable in chain, got {type(item).__name__}"
+            )
+
+        return [to_node(item) for item in node_or_chain]
 
     def step(
         self,
@@ -153,6 +165,7 @@ class Flow:
         self._nodes.append(node)
         nid = self._next_id(node, id)
         self._node_ids.append(nid)
+        self._loop_decider = None
         prev = self._last_added
         if prev is not None:
             self._edges.append(Edge(source_id=prev, target_id=nid, condition=when))
@@ -320,7 +333,7 @@ class Flow:
 
     def map(
         self,
-        processor: Node | list[Node],
+        processor: Node | list[Node] | dict | list[dict],
         *,
         input_keys: str | list[str] = "",
         output_key: str = "",
@@ -500,8 +513,8 @@ class Flow:
         (:class:`~teff.node.LLM`) normalizes free-form answers into a
         structured verdict, and a :class:`~teff.node.ask.Validate` node
         decodes it into ``<accept.decision_key>`` (and captures an
-        arbitrary value into ``accept.value_key``), so "конечно", "ок",
-        "хорошо" all count as *accept.pass_value*.  See
+        arbitrary value into ``accept.value_key``), so "yes", "ok",
+        "fine" all count as *accept.pass_value*.  See
         :meth:`interrupt_loop` for re-asking.
 
         Args:
@@ -546,6 +559,8 @@ class Flow:
         until: str,
         done: Node | list[Node],
         body: Node | list[Node],
+        *,
+        max_rounds: int | None = None,
     ) -> "Flow":
         """Run a chain repeatedly until ``state[key]`` equals *until*.
 
@@ -556,9 +571,9 @@ class Flow:
         (the last node before this call)::
 
             flow.step(draft_llm)
-            flow.interrupt("approved", "Одобрить?")   # decider
+            flow.interrupt("approved", "Approve?")   # decider
             flow.loop(
-                key="approved", until="да",
+                key="approved", until="yes",
                 done=final_llm, body=edit_llm,
             )
 
@@ -570,21 +585,31 @@ class Flow:
         The decider is any node that writes *key* (an ``Interrupt``
         whose resume value lands there, an LLM, a ``Transform``, …).
 
+        Passing *max_rounds* bounds the repetition: the loop is then
+        compiled as a self-contained ``loop`` node that retries *body* at
+        most *max_rounds* times before giving up on *until* (a safe guard
+        against a body that can never reach *until* in the free-flow graph
+        form).
+
         Args:
             key: State key to check.
             until: Value of *key* that stops the loop.
             done: Node or chain run when the loop terminates.
             body: Node or chain repeated while the loop continues.
+            max_rounds: Maximum body re-runs before the loop gives up.
 
         Returns:
             ``self`` for chaining.
         """
+        if max_rounds is not None:
+            return self._loop_bounded(key, until, done, body, max_rounds)
         self._check_continuation()
         decider = self._last_added
         if decider is None:
             raise ValueError("loop requires a preceding node to decide from")
-        done_chain = [done] if isinstance(done, Node) else list(done)
-        body_chain = [body] if isinstance(body, Node) else list(body)
+        self._loop_decider = decider
+        done_chain = self._as_chain(done)
+        body_chain = self._as_chain(body)
         if not done_chain:
             raise ValueError("loop requires at least one node in done")
         self._guarded_step = None
@@ -628,6 +653,43 @@ class Flow:
         self._last_added = done_last
         return self
 
+    def _loop_bounded(
+        self,
+        key: str,
+        until: str,
+        done: Node | list[Node],
+        body: Node | list[Node],
+        max_rounds: int,
+    ) -> "Flow":
+        """Compile a *max_rounds*-bounded loop as a self-contained loop node.
+
+        The free-flow :meth:`loop` wires decider/done/body edges that repeat
+        until the runtime gives up; bounding the retries needs a counter,
+        which the :class:`~teff.node.loop.Loop` node already provides.  When
+        *max_rounds* is requested the loop is emitted as one ``loop`` node
+        (body re-run up to *max_rounds* times until ``key=until``), followed
+        by the *done* chain as a plain linear continuation::
+
+            <decider> --(plain)--> loop node -> done chain -> ...
+
+        Returns ``self`` for chaining.
+        """
+        from teff.node.loop import Loop
+
+        self._check_continuation()
+        if not self._last_added:
+            raise ValueError("loop requires a preceding node to decide from")
+        done_chain = self._as_chain(done)
+        body_chain = self._as_chain(body)
+        if not done_chain:
+            raise ValueError("loop requires at least one node in done")
+        self._guarded_step = None
+        loop_node = Loop(body_chain, key=key, until=until, max_rounds=max_rounds)
+        self.step(loop_node)
+        for node in done_chain:
+            self.step(node)
+        return self
+
     def interrupt_loop(
         self,
         key: str,
@@ -649,7 +711,7 @@ class Flow:
           the free-form answer into a structured verdict object and a
           :class:`~teff.node.ask.Validate` node decodes it into
           ``accept.decision_key`` (capturing an arbitrary value into
-          ``accept.value_key`` when set) — so "конечно", "хорошо", "ок"
+          ``accept.value_key`` when set) — so "yes", "fine", "ok"
           all count as *accept.pass_value*.
         * Otherwise the raw answer in *key* is matched by the strategy
           (``equals`` / ``any_of`` / ``regex`` / ``check``).
@@ -841,6 +903,47 @@ class Flow:
         self._route_terminates = finish is None
         return self
 
+    def command(
+        self,
+        *,
+        routes: dict | None = None,
+        goto: str | None = None,
+        update: dict | None = None,
+        id: str | None = None,
+    ) -> "Flow":
+        """Add a declarative ``command`` node that routes by state.
+
+        Equivalent to ``step(CommandNode(...))`` but resolves ``goto``
+        /``routes[].goto`` names through any :meth:`label` labels, so a
+        sugar route can jump back to a loop's decision point::
+
+            flow.loop(key="verdict", until="pass", body=body, done=done)
+            flow.label("refine")
+            flow.command(
+                routes=[{"when": "decision=rework", "goto": "refine"}],
+                goto="STOP",
+            )
+
+        Returns ``self`` for chaining.
+        """
+        from teff.node.command_node import CommandNode
+
+        resolved_routes = []
+        for r in routes or []:
+            item = dict(r)
+            if "goto" in item and isinstance(item["goto"], str):
+                item["goto"] = self.label_target(item["goto"])
+            resolved_routes.append(item)
+        resolved_goto = self.label_target(goto) if goto else goto
+        config: dict = {}
+        if resolved_routes:
+            config["routes"] = resolved_routes
+        if resolved_goto is not None:
+            config["goto"] = resolved_goto
+        if update is not None:
+            config["update"] = update
+        return self.step(CommandNode(config=config), id=id)
+
     def harness(
         self,
         model: str | None = None,
@@ -1027,6 +1130,47 @@ class Flow:
         )
 
     def compile(self) -> Graph:
+        """Compile the flow into a ``Graph`` ready for execution.
+
+        Raises:
+            ValueError: If no nodes were added.
+        """
+        return self._compile()
+
+    def label(self, name: str) -> "Flow":
+        """Attach a route *name* to the most recently added node.
+
+        ``Command``-style ``goto`` targets (from a declarative ``route``
+        step) must name a real node id in the compiled graph.  A loop's
+        body has no node of its own — the *decider* (the node that reads
+        the loop key) is its re-entry point.  Label it so sugar can route
+        back to it::
+
+            flow.step(extract_verdict, id="extract_verdict")
+            flow.loop(key="verdict", until="pass", body=body, done=done)
+            flow.label("refine")            # ("refine" now means "extract_verdict")
+            flow.step(route_node)           # route: goto "refine" loops back
+
+        Returns ``self`` for chaining.
+        """
+        prev = self._last_added
+        if prev is None:
+            raise ValueError("label() requires a preceding node")
+        target = self._loop_decider if self._loop_decider is not None else prev
+        self._loop_labels[name] = target
+        return self
+
+    def label_target(self, goto: str) -> str:
+        """Resolve a declarative ``goto`` against labels to a real node id.
+
+        ``label()`` maps a route name (e.g. ``"refine"``) to the loop
+        decider's node id; this turns a sugar ``route: {goto: refine}``
+        into an executable ``goto: <decider_id>``.  Names that are not
+        labeled (real node ids, ``STOP``) pass through unchanged.
+        """
+        return self._loop_labels.get(goto, goto)
+
+    def _compile(self) -> Graph:
         """Compile the flow into a ``Graph`` ready for execution.
 
         Raises:

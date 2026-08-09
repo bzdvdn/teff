@@ -268,3 +268,95 @@ steps:
         assert "command" in default_registry.list()
         node = default_registry.create("command", {"goto": "STOP"})
         assert node.type == "command"
+
+
+def _verdict_reader(ctx, state):
+    return {"verdict": state.get("verdict", "needs_work")}
+
+
+def _rework_reader(ctx, state):
+    verdict = state.get("verdict", "needs_work")
+    return {
+        "verdict": verdict,
+        "decision": "approve" if verdict == "pass" else "rework",
+    }
+
+
+class TestFlowLabelCommand:
+    """``Flow.label`` + ``Flow.command`` resolve declarative goto targets."""
+
+    def _flow(self):
+        from teff.flow import Flow
+        from teff.node.transform import Transform
+
+        flow = Flow("rt")
+        flow.step(_verdict_reader, id="check_verdict")
+        flow.loop(
+            key="verdict",
+            until="pass",
+            body=[
+                Transform({"action": "value", "value": "pass", "output_key": "verdict"})
+            ],
+            done=[
+                Transform({"action": "value", "value": "ok", "output_key": "status"})
+            ],
+        )
+        flow.label("refine")
+        flow.command(
+            routes=[{"when": "decision=rework", "goto": "refine"}], goto="STOP"
+        )
+        return flow
+
+    def test_label_resolves_to_loop_decider(self):
+        flow = self._flow()
+        assert flow._loop_labels == {"refine": "check_verdict"}
+
+    def test_command_compiles_goto_to_decider_id(self):
+        flow = self._flow()
+        graph = flow.compile()
+        node = graph.nodes["command_4"]
+        assert node.config["routes"] == [
+            {"when": "decision=rework", "goto": "check_verdict"}
+        ]
+        assert node.config["goto"] == "STOP"
+
+    @pytest.mark.asyncio
+    async def test_e2e_loopable_returns_without_hanging(self):
+        flow = self._flow()
+        graph = flow.compile()
+        r = await graph.run(
+            {"decision": "approve", "verdict": "needs_work"}, max_iterations=20
+        )
+        assert r["verdict"] == "pass"
+        assert r["status"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_e2e_label_can_loop_again(self):
+        from teff.flow import Flow
+        from teff.node.transform import Transform
+
+        flow = Flow("rt2")
+        flow.step(_rework_reader, id="check_verdict")
+        flow.loop(
+            key="verdict",
+            until="pass",
+            body=[
+                Transform({"action": "value", "value": "pass", "output_key": "verdict"})
+            ],
+            done=[
+                Transform({"action": "value", "value": "ok", "output_key": "status"})
+            ],
+        )
+        flow.label("refine")
+        flow.command(
+            routes=[{"when": "decision=rework", "goto": "refine"}],
+            goto="STOP",
+        )
+        graph = flow.compile()
+        # start in "rework": verdict needs_work -> body -> pass; decider updates
+        # verdict to pass so the second pass through the loop terminates.
+        r = await graph.run(
+            {"decision": "rework", "verdict": "needs_work"}, max_iterations=20
+        )
+        assert r["verdict"] == "pass"
+        assert r["status"] == "ok"

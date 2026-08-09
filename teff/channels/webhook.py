@@ -15,7 +15,7 @@ as a JSON Schema, and a template maps the payload onto the one-turn
               customer_id: {type: string}
             required: [id, total]
           input:
-            message: "новый заказ {id} на сумму {total}"
+            message: "new order {id} for {total}"
           session_key: id
           owner: "payload.customer_id"
 

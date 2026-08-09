@@ -53,6 +53,20 @@ def _load_workflow_document(path: str) -> dict:
     return data
 
 
+def load_workflow_document(path: str) -> dict:
+    """Read *path* and resolve env refs and ``include:`` blocks.
+
+    Returns the fully expanded document (interpolated, includes merged)
+    — the same surface :func:`load_workflow` validates — without building
+    any nodes or tools.
+    """
+    data = _load_workflow_document(path)
+    base_dir = os.path.dirname(os.path.abspath(path))
+    data = _interpolate_env(data)
+    data = _resolve_includes(data, base_dir)
+    return data
+
+
 def _resolve_includes(data: dict, base_dir: str) -> dict:
     """Merge workflows referenced by an ``include:`` block into *data*.
 
@@ -452,11 +466,12 @@ def workflow_to_yaml(
     """
     steps = []
     for nid, node in graph.nodes.items():
+        config = _serialize_node_config(node)
         steps.append(
             {
                 "id": nid,
                 "type": getattr(type(node), "type", None) or getattr(node, "type", nid),
-                "config": getattr(node, "config", {}) or {},
+                "config": config or {},
             }
         )
 
@@ -499,6 +514,90 @@ def _tool_config(tool: Tool) -> dict:
     if isinstance(cfg, dict):
         return cfg
     return {}
+
+
+def _serialize_node_config(node: Node) -> dict:
+    """Serialize a node's config for YAML output, recursing into nested nodes.
+
+    Maps/Parallels hold their ``processor``/``branches`` as node objects
+    or lists of nodes (or plain dicts that a ``Map`` accepts verbatim).
+    This converts every nested ``Node`` into a ``{type, config}`` mapping
+    so the emitted ``graph.yaml`` can be parsed back by the YAML loader.
+    """
+    cfg = dict(getattr(node, "config", {}) or {})
+    stype = getattr(type(node), "type", None) or getattr(node, "type", "")
+    if stype == "map":
+        processor = cfg.get("processor")
+        if isinstance(processor, (list, tuple)):
+            cfg["processor"] = [
+                _to_yaml_node_step(p) if not isinstance(p, dict) else p
+                for p in processor
+            ]
+        elif processor is not None and not isinstance(processor, dict):
+            cfg["processor"] = _to_yaml_node_step(processor)
+    elif stype == "parallel":
+        branches = getattr(node, "_branches", None)
+        if branches:
+            cfg["branches"] = [
+                [
+                    _to_yaml_node_step(n) if not isinstance(n, dict) else n
+                    for n in branch
+                ]
+                for branch in branches
+            ]
+    elif stype == "loop":
+        body = cfg.get("body")
+        if isinstance(body, (list, tuple)):
+            cfg["body"] = [
+                _to_yaml_node_step(n) if not isinstance(n, dict) else n for n in body
+            ]
+    elif stype == "subflow" and not cfg.get("build"):
+        graph = getattr(node, "_graph", None)
+        if graph is not None:
+            cfg["input_map"] = getattr(node, "_input_map", {}) or {}
+            cfg["output_map"] = getattr(node, "_output_map", {}) or {}
+            cfg["max_iterations"] = getattr(node, "_max_iterations", None)
+            cfg["graph"] = _graph_to_yaml_block(graph)
+    return cfg
+
+
+def _graph_to_yaml_block(graph: Graph) -> dict:
+    """Serialize a nested Graph into a ``{steps, edges}`` mapping."""
+    steps = []
+    for nid, node in graph.nodes.items():
+        steps.append(
+            {
+                "id": nid,
+                "type": getattr(type(node), "type", None) or getattr(node, "type", nid),
+                "config": _serialize_node_config(node),
+            }
+        )
+    edges = []
+    for e in graph.edges:
+        if callable(e.condition):
+            raise ValueError(
+                "cannot serialize a callable edge condition to YAML "
+                "(callable conditions are programmatic-only)"
+            )
+        entry = {"from": e.source_id, "to": e.target_id}
+        if e.condition:
+            entry["condition"] = e.condition
+        edges.append(entry)
+    block: dict = {"steps": steps, "edges": edges}
+    if getattr(graph, "default_provider", None):
+        block["default_provider"] = graph.default_provider
+    if getattr(graph, "default_model", None):
+        block["default_model"] = graph.default_model
+    return block
+
+
+def _to_yaml_node_step(node: Node) -> dict:
+    """Render a nested node as a ``{type, config}`` step mapping."""
+    cfg = dict(getattr(node, "config", {}) or {})
+    return {
+        "type": getattr(type(node), "type", None) or getattr(node, "type", ""),
+        "config": cfg,
+    }
 
 
 def graph_to_yaml(graph: Graph) -> str:

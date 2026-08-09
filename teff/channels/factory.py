@@ -23,7 +23,7 @@ additional top-level blocks consumed by the channel layer::
         - path: /hooks/order
           schema: {type: object, properties: {...}}
           input:
-            message: "новый заказ {id}"
+            message: "new order {id}"
           session_key: id
     steps: [...]
     edges: [...]

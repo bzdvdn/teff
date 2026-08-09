@@ -1,0 +1,142 @@
+name: supervisor_complex_flow
+description: >-
+  The supervisor_complex app authored in flow.yaml — the 0.2 authoring
+  layer. This file compiles to a graph like the low-level workflow.yaml:
+  a team (lead + planner + coder) under a supervisor, a quality gate that
+  loops until the review passes, and an operator approval gate.
+
+default_provider: ollama
+default_model: llama3.1:8b
+
+providers:
+  - name: ollama
+    type: ollama
+    base_url: http://localhost:11434
+    chat_path: /api/chat
+
+state:
+  schema:
+    messages:
+      reducer: append
+      type: list
+  initial:
+    messages:
+      - role: user
+        content: Реализуй функцию подсчёта суммы покупок.
+    next_agent: ""
+    supervisor_rounds: 0
+    plan: ""
+    code: ""
+    critique: {}
+    verdict: ""
+    issues: []
+    fixes: []
+    decision: ""
+    delivered_at: ""
+
+steps:
+  - team:
+      id: team
+      leader:
+        system: >-
+          You are the team lead of a software team. Your team:
+
+          - planner — decomposes the user's request into a concrete plan
+          - coder — writes the implementation described by the plan
+          - finish — the work is complete, move on
+
+          The message includes the work already produced and the current
+          round. Reply with exactly ONE word: planner, coder or finish.
+
+          Rules:
+          - No punctuation, no quotes, no explanation — only the single word.
+          - First route to planner (nothing planned yet), then to coder
+            (plan exists, no code yet), then finish once both exist.
+          - Never invent teammates that are not listed above.
+      roles:
+        planner:
+          system: >-
+            You are a senior planner. Break the user's request into a short,
+            concrete implementation plan.
+
+            Rules:
+            - 3-5 bullet points, each one concrete and actionable.
+            - Mention the functions/modules the coder should produce.
+        coder:
+          system: >-
+            You are a senior developer. Implement the plan with clean,
+            working code.
+
+            Rules:
+            - Follow the plan exactly.
+            - Reply with the code in a fenced block and a one-line summary.
+            - Never invent libraries or functions that don't exist.
+      fallback: planner
+      max_rounds: 6
+      finish:
+        - llm:
+            id: review_quality
+            system: >-
+              You are a strict code reviewer. Review the code and reply with
+              a single JSON object:
+              {{ "verdict": "pass" or "needs_work", "issues": [list of short problems to fix] }}.
+            prompt: "Review the code:\n\n{code}\n\nReply with JSON."
+            output_key: critique
+            parse: true
+
+  - transform:
+      id: extract_verdict
+      action: json_get
+      input_key: critique
+      field: verdict
+      output_key: verdict
+
+  - loop:
+      key: verdict
+      until: pass
+      done:
+        - interrupt:
+            id: approve
+            key: approved
+            prompt: "Отправить код в работу? (approve / отлично / ok — да; любое другое — rework)"
+            strategy:
+              any_of: [approve, отлично, ok]
+              decision_key: decision
+              pass_value: approve
+              fail_value: rework
+      body:
+        - transform: {action: pick, input_key: critique, field: issues, output_key: issues, raw: true}
+        - map:
+            input_keys: [issues]
+            output_key: fixes
+            max_concurrency: 2
+            processor:
+              llm:
+                system: "You fix exactly one code issue. Reply with only the corrected code."
+                prompt: "Issue: {issues}\n\nCode:\n{code}"
+                output_key: fix
+        - transform: {action: join, input_key: fixes, sep: "\n", output_key: fixes_text}
+        - llm:
+            system: "You apply the reviewer's fixes to the existing code, reply with the full corrected code."
+            prompt: "Fixes:\n{fixes_text}\n\nCurrent code:\n{code}"
+            output_key: code
+        - llm:
+            system: >-
+              You are a strict code reviewer. Return a single JSON object:
+              {{ "verdict": "pass" or "needs_work", "issues": [list of problems to fix] }}.
+            prompt: "Review the corrected code:\n\n{code}\n\nReply with JSON."
+            output_key: critique
+            parse: true
+        - transform: {action: json_get, input_key: critique, field: verdict, output_key: verdict}
+
+  - route:
+      key: decision
+      routes:
+        - {when: "decision=approve", goto: final}
+        - {when: "decision=rework", goto: STOP}
+      goto: final
+
+  - transform:
+      id: final
+      action: now
+      output_key: delivered_at

@@ -15,7 +15,6 @@ import os
 from typing import Any
 
 import jsonschema
-import yaml
 
 from teff.errors import ConfigError
 
@@ -211,6 +210,21 @@ WORKFLOW_JSON_SCHEMA: dict[str, Any] = {
 
 _VALIDATOR = jsonschema.Draft202012Validator(WORKFLOW_JSON_SCHEMA)
 
+#: Idiom keys recognised in the authoring (workflow) layer — a single-key
+#: ``steps:`` mapping wrapping a step definition (``team:``, ``map:`` …).
+FLOW_IDIOMS = (
+    "llm",
+    "transform",
+    "agent",
+    "agent_step",
+    "team",
+    "parallel",
+    "map",
+    "loop",
+    "interrupt",
+    "route",
+)
+
 
 def _node_types() -> list[str]:
     from teff.node.registry import default_registry
@@ -301,6 +315,170 @@ def validate_workflow(
     return errors
 
 
+def validate_flow(
+    data: dict,
+    *,
+    node_types: list[str] | None = None,
+) -> list[dict]:
+    """Validate a parsed *authoring-layer* document (``workflow.yaml``).
+
+    This is the sibling of :func:`validate_workflow` for the high-level
+    formatting surface that mirrors the Python :class:`~teff.flow.Flow`
+    API (single-key idiom steps: ``team:``, ``map:``, ``loop:``, …):
+
+        steps:
+          - team: {leader: {system: "…"}, roles: {coder: {…}}}
+          - loop: {key: verdict, until: pass, body: […], done: […]}
+
+    Checks the structural JSON Schema common block plus the idiom surface:
+    every ``steps:`` entry must be a single-key mapping with a known idiom
+    name, and the structural invariants each idiom requires.
+
+    Args:
+        data: The parsed workflow document.
+        node_types: Allowed node type names (defaults to the registry).
+
+    Returns:
+        A list of ``{"path", "message"}`` errors (empty when valid).
+    """
+    errors: list[dict] = []
+    for err in _VALIDATOR.iter_errors(data):
+        path = _err_path(err.absolute_path)
+        # The classic validator demands id/type on every step — irrelevant
+        # for the idiom surface, so skip step-level schema findings here.
+        if path.startswith("steps"):
+            continue
+        errors.append({"path": path, "message": err.message})
+
+    steps = data.get("steps")
+    if not isinstance(steps, list) or not steps:
+        errors.append({"path": "steps", "message": "`steps` must be a non-empty list"})
+        return errors
+
+    for i, step in enumerate(steps):
+        path = f"steps[{i}]"
+        if not isinstance(step, dict) or len(step) != 1:
+            errors.append(
+                {
+                    "path": path,
+                    "message": (
+                        "each step must be a single-key idiom "
+                        f"(one of: {', '.join(FLOW_IDIOMS)})"
+                    ),
+                }
+            )
+            continue
+        idiom, spec = next(iter(step.items()))
+        if idiom not in FLOW_IDIOMS:
+            errors.append(
+                {
+                    "path": f"{path}.{idiom}",
+                    "message": (
+                        f"unknown flow idiom {idiom!r} (registered: "
+                        f"{', '.join(FLOW_IDIOMS)})"
+                    ),
+                }
+            )
+            continue
+        if not isinstance(spec, dict):
+            errors.append(
+                {
+                    "path": f"{path}.{idiom}",
+                    "message": f"expected a mapping after {idiom!r}, "
+                    f"got {type(spec).__name__}",
+                }
+            )
+            continue
+        if idiom in ("team",):
+            if (
+                "roles" not in spec
+                or not isinstance(spec["roles"], dict)
+                or not spec["roles"]
+            ):
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.roles",
+                        "message": "team requires a non-empty `roles:` mapping",
+                    }
+                )
+            if "leader" not in spec or not isinstance(spec["leader"], dict):
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.leader",
+                        "message": "team requires a `leader:` mapping",
+                    }
+                )
+        elif idiom == "map":
+            if "processor" not in spec:
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.processor",
+                        "message": "map requires a `processor:`",
+                    }
+                )
+        elif idiom == "loop":
+            if "key" not in spec:
+                errors.append(
+                    {"path": f"{path}.{idiom}.key", "message": "loop requires a `key:`"}
+                )
+            if "body" not in spec:
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.body",
+                        "message": "loop requires a `body:`",
+                    }
+                )
+            if "until" not in spec:
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.until",
+                        "message": "loop requires an `until:`",
+                    }
+                )
+        elif idiom == "interrupt":
+            if "key" not in spec:
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.key",
+                        "message": "interrupt requires a `key:`",
+                    }
+                )
+        elif idiom == "parallel":
+            if (
+                "branches" not in spec
+                or not isinstance(spec["branches"], list)
+                or not spec["branches"]
+            ):
+                errors.append(
+                    {
+                        "path": f"{path}.{idiom}.branches",
+                        "message": "parallel requires a non-empty `branches:` list",
+                    }
+                )
+
+    return errors
+
+
+def validate_flow_file(path: str) -> list[dict]:
+    """Validate a ``workflow.yaml`` file on disk.
+
+    Resolves env refs, ``include:`` blocks, and loads plugins the same way
+    :func:`validate_workflow_file` does, so custom node/tool types
+    referenced inside idioms are registered before validation.  Returns
+    ``{"path", "message"}`` errors (empty when valid); a missing file
+    raises :class:`ConfigError`.
+    """
+    if not os.path.exists(path):
+        raise ConfigError(f"workflow file not found: {path}")
+    from teff.yaml import load_workflow_document
+
+    data = load_workflow_document(path)
+    from teff.plugins import load_plugins_from_document
+
+    load_plugins_from_document(data, os.path.dirname(os.path.abspath(path)))
+    return validate_flow(data)
+
+
 def _err_path(parts: Any) -> str:
     out = ""
     for part in parts:
@@ -323,25 +501,18 @@ def validate_workflow_file(path: str) -> list[dict]:
     """Validate a workflow YAML file on disk.
 
     Loads any plugins referenced by the ``plugins`` key (or the default
-    ``plugins/`` folder) so custom node/tool types are registered before
-    validation.
+    ``plugins/`` folder) and resolves ``include:`` blocks the same way
+    :func:`teff.yaml.load_workflow` does, so custom node/tool types and
+    sub-included steps are all registered before validation.
 
     Returns a list of ``{"path", "message"}`` errors (empty when valid).
     A missing or unparseable file raises :class:`ConfigError`.
     """
     if not os.path.exists(path):
         raise ConfigError(f"workflow file not found: {path}")
-    try:
-        with open(path) as f:
-            data = yaml.safe_load(f)
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"invalid YAML in {path}: {exc}") from exc
-    if data is None:
-        return []
-    if not isinstance(data, dict):
-        raise ConfigError(
-            f"{path}: workflow must be a mapping, got {type(data).__name__}"
-        )
+    from teff.yaml import load_workflow_document
+
+    data = load_workflow_document(path)
     from teff.plugins import load_plugins_from_document
 
     load_plugins_from_document(data, os.path.dirname(os.path.abspath(path)))

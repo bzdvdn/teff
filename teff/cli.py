@@ -54,11 +54,15 @@ def _run_workflow(
     max_iterations: int | None = None,
     interactive: bool = False,
 ) -> None:
+    from teff.flow.compiler import load_flow, looks_like_flow
     from teff.yaml import load_workflow
 
     try:
-        graph, tools, initial_state, reducers = load_workflow(file)
         cfg = _load_yaml(file)
+        if looks_like_flow(cfg):
+            graph, tools, initial_state, reducers = load_flow(file)
+        else:
+            graph, tools, initial_state, reducers = load_workflow(file)
     except Exception as e:
         typer.echo(f"error: failed to load workflow: {e}", err=True)
         raise typer.Exit(1)
@@ -245,7 +249,7 @@ def main(
         help="Owner/session scoping the checkpoint (e.g. a user id)",
     ),
     resume: str | None = typer.Option(
-        None, "--resume", help='Resume values as JSON, e.g. \'{"approved":"да"}\''
+        None, "--resume", help='Resume values as JSON, e.g. \'{"approved":"yes"}\''
     ),
     node_timeout: float | None = typer.Option(
         None, "--node-timeout", help="Max seconds per node"
@@ -306,7 +310,7 @@ def run(
         help="Owner/session scoping the checkpoint (e.g. a user id)",
     ),
     resume: str | None = typer.Option(
-        None, "--resume", help='Resume values as JSON, e.g. \'{"approved":"да"}\''
+        None, "--resume", help='Resume values as JSON, e.g. \'{"approved":"yes"}\''
     ),
     node_timeout: float | None = typer.Option(
         None, "--node-timeout", help="Max seconds per node"
@@ -332,6 +336,44 @@ def run(
         max_iterations=max_iterations,
         interactive=interactive,
     )
+
+
+@app.command()
+def build(
+    file: str = typer.Argument(..., help="Path to flow.yaml (authoring surface)"),
+    output: str | None = typer.Option(
+        None, "--output", "-o", help="Path for the compiled graph.yaml"
+    ),
+) -> None:
+    """Compile a flow.yaml into the low-level graph.yaml artifact.
+
+    Previews the two-layer compile: ``flow.yaml → Graph → graph.yaml``.
+    Unless ``--output`` is given the compiled YAML is written to
+    ``graph.yaml`` next to the source flow file.
+    """
+    from teff.flow.compiler import build_flow_to_yaml, looks_like_flow
+
+    try:
+        cfg = _load_yaml(file)
+        if not looks_like_flow(cfg):
+            typer.echo(
+                f"error: {file} does not look like an authoring flow.yaml "
+                "(no idiom steps like `team:`, `llm:`, `map:`); use it "
+                "directly with `teff run -f {file}` as a graph",
+                err=True,
+            )
+            raise typer.Exit(2)
+        if output is None:
+            base = file if file.endswith(".yaml") else f"{file}.yaml"
+            output = base[:-5] + "_graph.yaml" if base.endswith(".yaml") else None
+        text = build_flow_to_yaml(file, output=output)
+        target = output or "<stdout>"
+        typer.echo(f"ok: compiled {file} → {target}")
+        if output is None:
+            typer.echo(text)
+    except Exception as e:
+        typer.echo(f"error: failed to compile flow: {e}", err=True)
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -371,11 +413,15 @@ def daemon(
     Durable state (already-reviewed MRs, counters, …) is carried across ticks
     via the optional ``--checkpoint``.
     """
+    from teff.flow.compiler import load_flow, looks_like_flow
     from teff.yaml import load_workflow
 
     try:
-        graph, tools, initial_state, reducers = load_workflow(file)
         cfg = _load_yaml(file)
+        if looks_like_flow(cfg):
+            graph, tools, initial_state, reducers = load_flow(file)
+        else:
+            graph, tools, initial_state, reducers = load_workflow(file)
     except Exception as e:
         typer.echo(f"error: failed to load workflow: {e}", err=True)
         raise typer.Exit(1)
@@ -497,10 +543,15 @@ def graph(
     ),
 ) -> None:
     """Inspect a workflow graph: YAML topology or a Mermaid diagram."""
+    from teff.flow.compiler import load_flow, looks_like_flow
     from teff.yaml import load_workflow
 
     try:
-        graph_, _tools, _state, _reducers = load_workflow(file)
+        cfg = _load_yaml(file)
+        if looks_like_flow(cfg):
+            graph_, _tools, _state, _reducers = load_flow(file)
+        else:
+            graph_, _tools, _state, _reducers = load_workflow(file)
     except Exception as e:
         typer.echo(f"error: failed to load workflow: {e}", err=True)
         raise typer.Exit(1)
@@ -515,11 +566,37 @@ def graph(
 def validate(
     file: str = typer.Argument(..., help="Path to workflow YAML file"),
 ) -> None:
-    """Validate a workflow YAML file without running it."""
-    from teff.yaml_schema import format_errors, validate_workflow_file
+    """Validate a workflow YAML file without running it.
+
+    Detects whether *file* is authored in the idiom surface (``team:``,
+    ``map:``, ``loop:`` …) or the classic graph format and runs the
+    matching validator, resolving ``include:`` blocks and declared plugins
+    first.
+    """
+    import yaml as _yaml
+
+    from teff.flow.compiler import looks_like_flow
+    from teff.yaml_schema import (
+        format_errors,
+        validate_flow_file,
+        validate_workflow_file,
+    )
 
     try:
-        errors = validate_workflow_file(file)
+        with open(file) as f:
+            cfg = _yaml.safe_load(f)
+        if not isinstance(cfg, dict):
+            raise ConfigError(f"{file}: workflow must be a mapping")
+    except Exception as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(1)
+
+    kind = "workflow" if looks_like_flow(cfg) else "graph"
+    try:
+        if kind == "workflow":
+            errors = validate_flow_file(file)
+        else:
+            errors = validate_workflow_file(file)
     except Exception as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(1)
@@ -527,7 +604,7 @@ def validate(
         typer.echo(format_errors(errors, source=file), err=True)
         typer.echo(f"invalid: {len(errors)} error(s)", err=True)
         raise typer.Exit(1)
-    typer.echo(f"ok: {file} is a valid workflow")
+    typer.echo(f"ok: {file} is a valid workflow ({kind})")
 
 
 @app.command("eval")
@@ -559,10 +636,15 @@ def eval_(
     import json as _json
 
     from teff.eval import format_report, load_dataset, run_eval
+    from teff.flow.compiler import load_flow, looks_like_flow
     from teff.yaml import load_workflow
 
     try:
-        workflow = load_workflow(file)
+        cfg = _load_yaml(file)
+        if looks_like_flow(cfg):
+            workflow = load_flow(file)
+        else:
+            workflow = load_workflow(file)
         dataset = load_dataset(data)
     except Exception as e:
         typer.echo(f"error: {e}", err=True)

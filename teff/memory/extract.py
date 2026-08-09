@@ -36,10 +36,10 @@ extract greetings, thanks, timestamps, or anything that only matters for \
 the current request.
 
 Examples:
-User: "Привет, я DevOps инженер и люблю кофе"
+User: "Hi, I'm a DevOps engineer and I love coffee"
 -> [{"text": "The user is a DevOps engineer"}, {"text": "The user likes coffee"}]
 
-User: "спасибо, пока"
+User: "thanks, bye"
 -> []
 
 Return ONLY a JSON array of objects, one per fact:

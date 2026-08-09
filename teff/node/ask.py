@@ -22,8 +22,8 @@ When ``clear_field`` names a verdict boolean (e.g. ``clear``) that is
 ``False``, :class:`Validate` writes ``clarify_value`` instead of a pass/fail
 decision; :meth:`~teff.flow.Flow.interrupt_loop` then routes that value back
 to the interrupt (re-ask the operator) **without** re-running the body chain.
-This is how a free-form reply like ``"qhjrkjlkjsdgjdlksgj"`` gets re-asked
-while ``"да"`` / ``"конечно"`` approve and ``"нет"`` re-plans.
+This is how a free-form reply like ``"ghskdlsjdkls"`` gets re-asked
+while ``"yes"`` / ``"sure"`` approve and ``"no"`` re-plans.
 
 The strategy is executed by the :class:`Validate` node, which decodes the
 verdict / raw answer into a ``flow.loop`` decider value (like
@@ -48,14 +48,14 @@ class Ask:
 
     Use the classmethod constructors to pick a strategy::
 
-        Ask.equals("да")
-        Ask.any_of("да", "ок", "конечно")
+        Ask.equals("yes")
+        Ask.any_of("yes", "ok", "sure")
         Ask.regex(r"^[A-Z0-9]{4,12}$", value_key="discount_code")
-        Ask.check(lambda v: v.lower() in {"да", "ок"})
+        Ask.check(lambda v: v.lower() in {"yes", "ok"})
         Ask.llm(system=..., user=..., schema=..., model=..., provider=...)
 
     The strategy is auto-detected from the constructor kwargs, so plain
-    ``Ask(equals="да", value_key="code")`` also works.
+    ``Ask(equals="yes", value_key="code")`` also works.
     """
 
     def __init__(
@@ -164,8 +164,8 @@ class Ask:
         Mirrors the YAML shorthand on an ``interrupt`` step::
 
             strategy:
-              equals: да
-            # or: any_of: [да, ок]  |  regex: "^[A-Z0-9]{4}$"
+              equals: yes
+            # or: any_of: [yes, ok]  |  regex: "^[A-Z0-9]{4}$"
             # or: llm: {system, user, schema, model, provider}
 
         The mapping's other keys (``value_key``, ``decision_key``,

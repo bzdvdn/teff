@@ -81,6 +81,7 @@ class Parallel(Node):
                 reducers=reducers,
                 providers=getattr(ctx, "providers", None),
                 default_provider=getattr(ctx, "default_provider", None),
+                default_model=getattr(ctx, "default_model", None),
                 on_llm_payload=getattr(ctx, "on_llm_payload", None),
             )
             start = time.monotonic()

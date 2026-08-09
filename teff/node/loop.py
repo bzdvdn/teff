@@ -23,15 +23,15 @@ class Loop(Node):
           type: loop
           config:
             key: approved
-            until: "да"
+            until: "yes"
             max_rounds: 3
             body:
-              - {type: transform, config: {action: value, value: "нет", output_key: approved}}
+              - {type: transform, config: {action: value, value: "no", output_key: approved}}
 
     Each round runs the *body* chain (a single node or a list), then evaluates
     the condition ``key=until`` against the merged state using the same
-    expression language as ``edges:`` conditions (so ``until: "да"`` matches
-    ``"Да"`` or ``"да."``).  When the condition holds the loop stops; the body
+    expression language as ``edges:`` conditions (so ``until: "yes"`` matches
+    ``"Yes"`` or ``"yes."``).  When the condition holds the loop stops; the body
     still runs at least once even if the condition already held on entry, which
     matches the Flow-loop contract where a decider writes *key* and then the
     body decides whether to re-run.
@@ -78,8 +78,16 @@ class Loop(Node):
             if isinstance(spec, Node):
                 return spec
             if isinstance(spec, dict):
-                cfg = dict(spec)
-                stype = cfg.pop("type")
+                spec = dict(spec)
+                stype = spec.pop("type")
+                cfg = spec.pop("config", None)
+                if cfg is not None:
+                    if not isinstance(cfg, dict):
+                        msg = f"invalid loop body spec: {spec!r}"
+                        raise TypeError(msg)
+                    cfg = {**spec, **dict(cfg)}
+                else:
+                    cfg = spec
                 return default_registry.create(stype, cfg)
             msg = f"invalid loop body spec: {spec!r}"
             raise TypeError(msg)

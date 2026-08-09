@@ -19,10 +19,10 @@ def render_template(template: str, state: dict) -> str:
     Usage::
 
         render_template(
-            "составь план для ремонта {type} на сумму {summ}",
-            {"type": "кухни", "summ": 15000},
+            "create a repair plan for {type} up to {summ}",
+            {"type": "kitchen", "summ": 15000},
         )
-        # "составь план для ремонта кухни на сумму 15000"
+        # "create a repair plan for kitchen up to 15000"
     """
     if "{" not in template:
         return template

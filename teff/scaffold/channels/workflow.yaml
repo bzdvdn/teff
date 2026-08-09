@@ -39,7 +39,7 @@ channels:
             type: string
         required: [text]
       input:
-        message: "сделай краткое резюме: {text}"
+        message: "make a short summary: {text}"
       session_key: text
       owner: "header.X-User-Id"
 

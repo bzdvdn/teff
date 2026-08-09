@@ -90,8 +90,16 @@ class Map(Node):
             if isinstance(spec, Node):
                 return spec
             if isinstance(spec, dict):
-                cfg = dict(spec)
-                stype = cfg.pop("type")
+                spec = dict(spec)
+                stype = spec.pop("type")
+                cfg = spec.pop("config", None)
+                if cfg is not None:
+                    if not isinstance(cfg, dict):
+                        msg = f"invalid processor spec: {spec!r}"
+                        raise TypeError(msg)
+                    cfg = {**spec, **dict(cfg)}
+                else:
+                    cfg = spec
                 return default_registry.create(stype, cfg)
             msg = f"invalid processor spec: {spec!r}"
             raise TypeError(msg)
@@ -190,6 +198,7 @@ class Map(Node):
                 reducers=reducers,
                 providers=getattr(ctx, "providers", None),
                 default_provider=getattr(ctx, "default_provider", None),
+                default_model=getattr(ctx, "default_model", None),
                 on_llm_payload=getattr(ctx, "on_llm_payload", None),
             )
             start = time.monotonic()

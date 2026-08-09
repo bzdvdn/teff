@@ -160,7 +160,7 @@ class DocumentCatalog:
         if not results:
             return "Nothing found."
         lines = [
-            f"{i}. (похожесть: {score:.2f}) {meta.get('text', doc_id)[:120]}"
+            f"{i}. (similarity: {score:.2f}) {meta.get('text', doc_id)[:120]}"
             for i, (doc_id, score, meta) in enumerate(results, start=1)
         ]
         return "\n".join(lines)
