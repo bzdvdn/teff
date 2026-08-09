@@ -17,6 +17,7 @@ from typing import Any
 import jsonschema
 
 from teff.errors import ConfigError
+from teff.tool.mcp import MCP_PRESETS
 
 WORKFLOW_JSON_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -243,7 +244,9 @@ def _tool_types() -> list[str]:
     import teff.tool.builtin  # noqa: F401 — registers built-in tools
     from teff.tool.registry import default_tool_registry
 
-    return default_tool_registry.list()
+    # "mcp" is not a registry tool: it's parsed into a lazily-opened
+    # McpToolGroup by the loader rather than instantiated synchronously.
+    return ["mcp", *default_tool_registry.list()]
 
 
 def validate_workflow(
@@ -304,6 +307,39 @@ def validate_workflow(
                     "message": f"unknown tool type {ttype!r}",
                 }
             )
+        if ttype == "mcp":
+            config = tool.get("config") or {}
+            has_url = isinstance(config.get("url"), str)
+            has_command = isinstance(config.get("command"), list)
+            has_preset = isinstance(config.get("preset"), str) and bool(
+                config.get("preset")
+            )
+            if not has_preset and has_url == has_command:
+                errors.append(
+                    {
+                        "path": f"tools[{i}].config",
+                        "message": (
+                            "mcp tool requires exactly one of 'url' or 'command'"
+                            " (or a known 'preset')"
+                        ),
+                    }
+                )
+            if has_preset and config.get("preset") not in MCP_PRESETS:
+                errors.append(
+                    {
+                        "path": f"tools[{i}].config.preset",
+                        "message": f"unknown mcp preset {config.get('preset')!r}",
+                    }
+                )
+            if not isinstance(config.get("id", "mcp"), str) or not config.get(
+                "id", "mcp"
+            ):
+                errors.append(
+                    {
+                        "path": f"tools[{i}].config.id",
+                        "message": "mcp tool 'id' must be a non-empty string",
+                    }
+                )
 
     for i, edge in enumerate(data.get("edges") or []):
         if not isinstance(edge, dict):
@@ -488,6 +524,52 @@ def validate_flow(
                     {
                         "path": f"{path}.{idiom}.branches",
                         "message": "parallel requires a non-empty `branches:` list",
+                    }
+                )
+
+    tool_types = _tool_types()
+    for i, tool in enumerate(data.get("tools") or []):
+        if not isinstance(tool, dict):
+            continue
+        ttype = tool.get("type")
+        if isinstance(ttype, str) and ttype not in tool_types:
+            errors.append(
+                {
+                    "path": f"tools[{i}].type",
+                    "message": f"unknown tool type {ttype!r}",
+                }
+            )
+        if ttype == "mcp":
+            config = tool.get("config") or {}
+            has_url = isinstance(config.get("url"), str)
+            has_command = isinstance(config.get("command"), list)
+            has_preset = isinstance(config.get("preset"), str) and bool(
+                config.get("preset")
+            )
+            if not has_preset and has_url == has_command:
+                errors.append(
+                    {
+                        "path": f"tools[{i}].config",
+                        "message": (
+                            "mcp tool requires exactly one of 'url' or 'command'"
+                            " (or a known 'preset')"
+                        ),
+                    }
+                )
+            if has_preset and config.get("preset") not in MCP_PRESETS:
+                errors.append(
+                    {
+                        "path": f"tools[{i}].config.preset",
+                        "message": f"unknown mcp preset {config.get('preset')!r}",
+                    }
+                )
+            if not isinstance(config.get("id", "mcp"), str) or not config.get(
+                "id", "mcp"
+            ):
+                errors.append(
+                    {
+                        "path": f"tools[{i}].config.id",
+                        "message": "mcp tool 'id' must be a non-empty string",
                     }
                 )
 

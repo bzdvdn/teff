@@ -8,7 +8,7 @@ import textwrap
 import pytest
 
 from teff.node.llm import LLM
-from teff.tool import McpTool, mcp_tools
+from teff.tool import McpTool, McpToolGroup, mcp_tools, open_tools
 from teff.tool.mcp import _connect_tools
 
 pytest.importorskip("mcp")
@@ -259,3 +259,214 @@ async def test_stdio_end_to_end(tmp_path):
         assert tools[0].description == "Add two integers"
         assert tools[0].schema["required"] == ["a", "b"]
         assert await tools[0].arun(a=20, b=22) == "42"
+
+
+# --- McpToolGroup / open_tools -----------------------------------------
+
+
+async def test_group_requires_exactly_one_transport():
+    with pytest.raises(ValueError, match="exactly one"):
+        McpToolGroup()
+    with pytest.raises(ValueError, match="exactly one"):
+        McpToolGroup(url="http://x", command=["y"])
+
+
+async def test_group_opens_idempotently(tmp_path):
+    script = tmp_path / "mcp_server.py"
+    script.write_text(SERVER_SCRIPT)
+
+    group = McpToolGroup(id="demo", command=[sys.executable, str(script)])
+    tools = await group.open()
+    assert [t.name for t in tools] == ["demo__add"]
+    assert tools[0]._server_name == "add"
+    assert await tools[0].arun(a=1, b=2) == "3"
+
+    # cached — same list, no second subprocess
+    assert await group.open() is tools
+    await group.aclose()
+    await group.aclose()  # idempotent
+
+
+async def test_open_tools_expands_groups(tmp_path):
+    script = tmp_path / "mcp_server.py"
+    script.write_text(SERVER_SCRIPT)
+
+    group = McpToolGroup(id="demo", command=[sys.executable, str(script)])
+    plain = McpTool(_FakeSession(), _spec("echo"))
+    async with open_tools([group, plain]) as ready:
+        names = sorted(t.name for t in ready)
+        assert names == ["demo__add", "echo"]
+        add_tool = next(t for t in ready if t.name == "demo__add")
+        assert await add_tool.arun(a=5, b=5) == "10"
+    # group closed on exit: reopening must not re-use a dead session
+
+
+class _FakeSession:
+    async def call_tool(self, name, arguments):
+        return None
+
+
+def _spec(name):
+    return types.Tool(
+        name=name,
+        description="fake",
+        input_schema={"type": "object", "properties": {}},  # type: ignore[call-arg]
+    )
+
+
+async def test_graph_expands_groups_and_aclose(tmp_path):
+    from teff.graph import Graph
+    from teff.node.registry import make_function_node
+    from teff.tool.builtin import CalculatorTool
+
+    script = tmp_path / "mcp_server.py"
+    script.write_text(SERVER_SCRIPT)
+
+    async def noop(ctx, state):
+        return {}
+
+    group = McpToolGroup(id="demo", command=[sys.executable, str(script)])
+    graph = Graph(
+        nodes={"n": make_function_node(noop)},
+        edges=[],
+        entry_point="n",
+        default_provider="fake",
+        default_model="x",
+    )
+    tools: list = [group, CalculatorTool()]
+    async with graph:
+        expanded = await graph._expand_tools(tools)
+        assert sorted(t.name for t in expanded) == [
+            "calculator",
+            "demo__add",
+        ]
+        # repeated expansion reuses the cached connection (same members)
+        again = await graph._expand_tools(tools)
+        assert again is not expanded
+        assert [t for t in again if t.name == "demo__add"] == [
+            t for t in expanded if t.name == "demo__add"
+        ]
+    # async with closed the group — a fresh graph gets a fresh connection
+    assert group.aclose is not None
+
+
+# --- Presets ---------------------------------------------------------------
+
+
+def test_presets_registry():
+    from teff.tool.mcp import MCP_PRESETS, GoogleDrivePreset
+
+    assert set(MCP_PRESETS) == {
+        "fetch",
+        "git",
+        "gmail",
+        "google_calendar",
+        "google_drive",
+        "sqlite",
+        "time",
+    }
+    assert MCP_PRESETS["google_drive"] is GoogleDrivePreset
+    drive = MCP_PRESETS["google_drive"]
+    assert drive.command[0] == "npx"
+    assert "GOOGLE_DRIVE_REFRESH_TOKEN" in drive.env
+    assert MCP_PRESETS["git"].command == ["uvx", "mcp-server-git"]
+    assert MCP_PRESETS["time"].command == ["uvx", "mcp-server-time"]
+    assert MCP_PRESETS["fetch"].command == ["uvx", "mcp-server-fetch"]
+    assert MCP_PRESETS["sqlite"].command == ["uvx", "mcp-server-sqlite"]
+
+
+def test_from_preset_defaults():
+    group = McpToolGroup.from_preset("google_drive")
+    assert group.id == "google_drive"
+    assert group._command == ["npx", "-y", "@google/mcp-server-google-drive"]
+    assert group._url is None
+    expected = {
+        "GOOGLE_API_KEY": "",
+        "GOOGLE_DRIVE_CLIENT_ID": "",
+        "GOOGLE_DRIVE_CLIENT_SECRET": "",
+        "GOOGLE_DRIVE_REFRESH_TOKEN": "",
+    }
+    assert group._env == expected
+
+
+def test_from_preset_env_merges_over_defaults():
+    group = McpToolGroup.from_preset(
+        "gmail",
+        env={
+            "GOOGLE_GMAIL_REFRESH_TOKEN": "secret",
+            "EXTRA": "x",
+        },
+    )
+    assert group._env["GOOGLE_GMAIL_REFRESH_TOKEN"] == "secret"
+    assert group._env["EXTRA"] == "x"
+    assert group._env["GOOGLE_API_KEY"] == ""
+
+
+def test_from_preset_overrides_transport():
+    group = McpToolGroup.from_preset(
+        "google_calendar",
+        command=["my-server"],
+        url=None,
+    )
+    assert group._command == ["my-server"]
+    assert group._url is None
+
+
+def test_from_preset_unknown_raises():
+    with pytest.raises(KeyError, match="unknown MCP preset"):
+        McpToolGroup.from_preset("nope")
+
+
+def test_custom_preset_subclass_auto_registered():
+    from teff.tool.mcp import MCP_PRESETS, McpPreset
+
+    class MyDrivePreset(McpPreset):
+        name = "my_drive"
+        command = ["my-server", "arg"]
+        env = {"MY_TOKEN": "default"}
+
+    assert "my_drive" not in MCP_PRESETS  # snapshot predates this class
+    assert MyDrivePreset in McpPreset.__subclasses__()
+    group = McpToolGroup.from_preset("my_drive")
+    assert group._command == ["my-server", "arg"]
+    assert group._env == {"MY_TOKEN": "default"}
+    assert group.id == "my_drive"
+    with_env = McpToolGroup.from_preset("my_drive", env={"MY_TOKEN": "real"})
+    assert with_env._env == {"MY_TOKEN": "real"}
+
+
+def test_ensure_runtime_missing_npx(monkeypatch):
+    from teff.tool.mcp.bridge import _ensure_runtime
+
+    monkeypatch.setattr("shutil.which", lambda cmd: None)
+    with pytest.raises(RuntimeError, match="Node.js"):
+        _ensure_runtime("npx", "google_drive")
+    with pytest.raises(RuntimeError, match="python-based"):
+        _ensure_runtime("npx", "google_drive")
+
+
+def test_ensure_runtime_present(monkeypatch):
+    from teff.tool.mcp.bridge import _ensure_runtime
+
+    monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/uvx")
+    _ensure_runtime("uvx", "git")  # no raise
+
+
+def test_ensure_runtime_missing_uvx(monkeypatch):
+    from teff.tool.mcp.bridge import _ensure_runtime
+
+    monkeypatch.setattr("shutil.which", lambda cmd: None)
+    with pytest.raises(RuntimeError, match="not installed"):
+        _ensure_runtime("uvx", "git")
+
+
+def test_ensure_runtime_blocks_open(tmp_path, monkeypatch):
+    script = tmp_path / "mcp_server.py"
+    script.write_text(SERVER_SCRIPT)
+
+    group = McpToolGroup(id="demo", command=[sys.executable, str(script)])
+    monkeypatch.setattr("shutil.which", lambda cmd: None)
+    with pytest.raises(RuntimeError, match="not on PATH"):
+        import asyncio
+
+        asyncio.run(group.open())

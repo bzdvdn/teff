@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+- **MCP servers as tools** — `type: mcp` in `tools:` (both YAML surfaces)
+  connects to a Model Context Protocol server (streamable-http `url:` or
+  stdio `command:`) and exposes its tools to agents as `<id>__<tool>`.
+  Connections open lazily on first use and are cached per `Graph`, then
+  closed by the new `graph.aclose()` / `async with graph:`; the CLI wraps
+  `run` and `daemon` automatically. Python twin: `McpToolGroup`
+  (`teff.tool.mcp`), `open_tools(...)`, and the existing `mcp_tools(...)`.
+- **MCP presets** — `McpToolGroup.from_preset()` / a `preset:` key in the
+  YAML config launches a known server without spelling out its command and
+  env vars. Presets are `McpPreset` subclasses that carry their canonical
+  `name`; the `MCP_PRESETS` registry is built in the package `__init__` from
+  every subclass, so adding your own preset is one class. Built-ins run via
+  two launchers:
+  - **`npx` / Node.js** (Google ships only npm packages): `google_drive`,
+    `gmail`, `google_calendar` (`npx -y @google/mcp-server-*` with the
+    `GOOGLE_DRIVE_*` / `GOOGLE_GMAIL_*` / `GOOGLE_CALENDAR_*` env keys).
+  - **`uvx` / Python** (no Node needed): `git`, `fetch`, `time`, `sqlite`
+    (`uvx mcp-server-*`).
+  An explicit `env:` merges over the preset's defaults (same key overrides);
+  `command:`/`url:`/`id:` overrides fully replace the preset's value.
+  Validation accepts `preset` *or* `url`/`command` and rejects unknown
+  preset names.
+- **MCP launcher detection** — opening a stdio server verifies its launcher
+  (`npx`/`uvx`) is on `PATH` and fails with a clear message: a missing Node
+  toolchain explains what to install and suggests overriding `command:` with
+  a Python-based server, instead of an opaque subprocess error.
+- **`teff.tool.mcp` package** — the MCP integration moved into its own
+  package with the connection bridge (`bridge`) and launch presets
+  (`presets`) split apart; everything re-exports from `teff.tool`
+  (`McpPreset`, `McpTool`, `McpToolGroup`, `MCP_PRESETS`, `mcp_tools`,
+  `open_tools`).
+
 ## 0.2.0 — flow.yaml authoring layer
 
 This release adds a second, higher-level YAML surface — `flow.yaml` — that

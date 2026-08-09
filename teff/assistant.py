@@ -20,12 +20,12 @@ binds the settings so apps call one object.
 
 from __future__ import annotations
 
-from typing import AsyncIterator, Callable, Mapping
+from typing import AsyncIterator, Callable, Mapping, Sequence
 
 from teff.checkpoint import DEFAULT_OWNER, Checkpointer
 from teff.graph import Graph, TurnResult
 from teff.stream import StreamEvent
-from teff.tool import Tool
+from teff.tool import McpToolGroup, Tool
 
 
 class Assistant:
@@ -34,7 +34,7 @@ class Assistant:
     def __init__(
         self,
         graph: Graph,
-        tools: list[Tool],
+        tools: "Sequence[Tool | McpToolGroup]",
         checkpointer: Checkpointer,
         *,
         reducers: dict | None = None,

@@ -653,7 +653,39 @@ Exactly as in `graph.yaml`. Tool instances made available to agents (and
 tools:
   - type: web_search
   - type: python_eval
+  - type: mcp
+    config:
+      id: drive
+      command: [uvx, mcp-server-google-drive]
 ```
+
+`type: mcp` is a special tool — it declares an [MCP](https://modelcontextprotocol.io)
+server (streamable-http `url:` or stdio `command:`) whose tools are exposed
+to agents as `<id>__<tool>`. The connection opens lazily on first use and
+lives for the whole graph, so it is shared across daemon ticks and
+conversation turns. Exactly one of `url`/`command` is required; optional
+`env`, `cwd` and `client_info` are passed through. Run the flow with
+`teff run file.yaml` (the CLI closes the connection when the run ends) or
+wrap your own call in `async with graph:`.
+
+For known servers, a `preset:` supplies the launch command and env keys;
+your `env:` merges over the defaults:
+
+```yaml
+tools:
+  - type: mcp
+    config:
+      preset: google_drive   # npx: google_drive | gmail | google_calendar
+      env: {GOOGLE_DRIVE_REFRESH_TOKEN: "${GDRIVE_TOKEN}"}
+  - type: mcp
+    config:
+      preset: git            # uvx (Python): git | fetch | time | sqlite
+```
+
+A `preset` config needs no `url`/`command`. Explicit `command:`/`url:`,
+`id:` or extra `env:` keys override the preset (env merges key-by-key).
+Google presets launch via `npx` and need Node.js; the `uvx` presets are
+pure Python. A missing launcher fails the connection with a clear error.
 
 ---
 

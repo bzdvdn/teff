@@ -54,6 +54,95 @@ print(default_tool_registry.list())  # all registered names
 | `rag` | `RAGTool` | `teff[stores-*]` | Retrieval over a vector store |
 | `rag_ingest` | `RAGIngestTool` | `teff[stores-*]` | Add documents to a vector store (chunk+embed+store) |
 | `memory` | `MemoryTool` | `teff[stores-*]` | Long-term memory (remember/recall/forget) |
+| `mcp` | `McpToolGroup` | `teff[mcp]` | Expose every tool of an MCP server (streamable-http or stdio); ready-made `preset`s for Google Drive / Gmail / Calendar |
+
+## Model Context Protocol (MCP) servers
+
+`type: mcp` is a special tool: it doesn't map onto a registry class but onto
+a lazily-opened [MCP](https://modelcontextprotocol.io) server, whose tools
+become available to agents as `Tool` instances named `<server_id>__<tool>`.
+
+```yaml
+tools:
+  - type: mcp
+    config:
+      id: drive            # member tools become drive__ <tool>
+      command: [uvx, mcp-server-google-drive]   # stdio server
+  - type: mcp
+    config:
+      id: git
+      url: http://localhost:8000/mcp             # streamable-http server
+```
+
+Exactly one of `command` (stdio argv, resolved) or `url` (streamable HTTP
+endpoint) must be given; optional `env`, `cwd` and `client_info` keys are
+accepted too and map 1:1 onto `McpToolGroup`'s constructor.
+
+Instead of spelling out a server's launch command and env keys, use a
+**preset** for a known server — the preset supplies the command (or url)
+and its env-var keys, and your `env:` entries merge over the defaults
+(same key overrides):
+
+```yaml
+tools:
+  - type: mcp
+    config:
+      preset: google_drive
+      env: {GOOGLE_DRIVE_REFRESH_TOKEN: "${GDRIVE_TOKEN}"}
+```
+
+Known presets (`MCP_PRESETS`) split into two launchers:
+
+- **`npx` (Node.js) — Google servers.** `google_drive`, `gmail`,
+  `google_calendar` run `npx @google/mcp-server-*` with the corresponding
+  `GOOGLE_DRIVE_*`, `GOOGLE_GMAIL_*`, `GOOGLE_CALENDAR_*` env keys. Google
+  distributes these only as npm packages, so Node.js must be installed.
+- **`uvx` (Python) — self-hosted servers.** `git`, `fetch`, `time`,
+  `sqlite` run `uvx mcp-server-*` (Python packages, no Node needed).
+
+If the launcher (`npx`/`uvx`) is missing from `PATH`, opening the group
+fails with a clear error instead of an opaque subprocess failure — see
+`graph.aclose()`-adjacent errors, e.g.:
+
+```
+RuntimeError: cannot start MCP server 'google_drive': 'npx' is not
+installed. ... Install Node.js ... or override the preset with a
+python-based `command:`.
+```
+
+A `preset` plus explicit `command:`/`url:`/`id:`/`cwd:` overrides
+fully replaces the preset's value for that key; `id` defaults to the preset
+name. Validation accepts a config with either `preset` *or* one of
+`url`/`command`.
+
+The connection is opened lazily on first use and cached for the lifetime of
+the graph, so daemon ticks and conversation turns reuse a single connection.
+Close everything with `graph.aclose()` — or equivalently `async with
+graph:`:
+
+```python
+graph, tools, state, reducers = load_workflow("app/flow.yaml")
+async with graph:
+    result = await graph.run(state, tools=tools)
+```
+
+In plain Python, `McpToolGroup` and `open_tools` give the same primitives
+without YAML:
+
+```python
+from teff.tool import McpToolGroup, open_tools
+
+async with open_tools(
+    [
+        McpToolGroup(id="git", command=["uvx", "mcp-server-git"]),
+        McpToolGroup.from_preset(
+            "google_drive",
+            env={"GOOGLE_DRIVE_REFRESH_TOKEN": os.environ["GDRIVE_TOKEN"]},
+        ),
+    ]
+) as tools:
+    result = await graph.run(state, tools=tools)
+```
 
 ## Configuring tools
 

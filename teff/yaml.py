@@ -10,6 +10,7 @@ from teff.errors import ConfigError
 from teff.graph import Edge, Graph
 from teff.node.node import Node
 from teff.state.state import Reducer, reducers_from_yaml_schema
+from teff.tool.mcp import McpToolGroup
 from teff.tool.registry import default_tool_registry
 from teff.tool.tool import Tool
 from teff.yaml_schema import raise_for_validation, validate_workflow
@@ -617,7 +618,9 @@ def graph_to_yaml(graph: Graph) -> str:
     return workflow_to_yaml(graph)
 
 
-def load_workflow(path: str) -> tuple[Graph, list[Tool], dict, dict[str, Reducer]]:
+def load_workflow(
+    path: str,
+) -> tuple[Graph, list[Tool | McpToolGroup], dict, dict[str, Reducer]]:
     """Load a complete workflow from a YAML file (graph + tools + state).
 
     YAML format::
@@ -701,13 +704,16 @@ def load_workflow(path: str) -> tuple[Graph, list[Tool], dict, dict[str, Reducer
             )
         )
 
-    tools: list[Tool] = []
+    tools: list[Tool | McpToolGroup] = []
     base_dir = os.path.dirname(os.path.abspath(path))
     for td in data.get("tools", []):
         ttype = td["type"]
         tconfig = td.get("config", {})
         if ttype in ("rag", "rag_ingest"):
             tconfig = _resolve_rag_config(tconfig, base_dir)
+        if ttype == "mcp":
+            tools.append(_mcp_group_from_config(tconfig))
+            continue
         tools.append(default_tool_registry.create(ttype, tconfig))
 
     providers = _providers_from_data(data)
@@ -769,6 +775,25 @@ def checkpointer_from_workflow(path: str):
     return checkpointer_from_config(
         resolve_checkpoint_config(data["checkpoint"], base_dir)
     )
+
+
+def _mcp_group_from_config(config: dict) -> McpToolGroup:
+    """Build a lazily-opened MCP server group from a workflow config dict.
+
+    Accepts ``id`` (defaults to ``"mcp"``), ``url`` or ``command``, plus
+    optional ``env``/``cwd``/``client_info`` — mirroring
+    :class:`~teff.tool.mcp.McpToolGroup`'s keyword names, so the YAML
+    ``config`` maps 1:1 onto the constructor.  A ``preset`` name builds the
+    group via :meth:`~teff.tool.mcp.McpToolGroup.from_preset`; any extra
+    keys merge over the preset's defaults.
+    """
+    config = dict(config)
+    if "preset" in config:
+        name = config.pop("preset")
+        if not isinstance(name, str) or not name:
+            raise ValueError("mcp tool 'preset' must be a non-empty string")
+        return McpToolGroup.from_preset(name, **config)
+    return McpToolGroup(**config)
 
 
 def _resolve_rag_config(config: dict, base_dir: str) -> dict:

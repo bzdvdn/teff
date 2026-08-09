@@ -19,7 +19,7 @@ def _build_state(
         validate_state,
     )
     from teff.tool.registry import default_tool_registry
-    from teff.yaml import _resolve_rag_config
+    from teff.yaml import _mcp_group_from_config, _resolve_rag_config
 
     tools: list = []
     for td in data.get("tools", []) or []:
@@ -27,6 +27,9 @@ def _build_state(
         tconfig = td.get("config", {})
         if ttype in ("rag", "rag_ingest"):
             tconfig = _resolve_rag_config(tconfig, base_dir or os.getcwd())
+        if ttype == "mcp":
+            tools.append(_mcp_group_from_config(tconfig))
+            continue
         tools.append(default_tool_registry.create(ttype, tconfig))
 
     state_block = data.get("state", {})

@@ -130,41 +130,42 @@ async def _run_loop(
 
     observer = observer_factory() if observer_factory else None
     tracer = observer.tracer if observer else (RunTracer() if trace else None)
-    try:
-        while True:
-            try:
-                result = await graph.run(
-                    state,
-                    tools=tools,
-                    reducers=reducers,
-                    checkpointer=checkpointer,
-                    checkpoint_id=checkpoint_id,
-                    owner=checkpoint_owner,
-                    resume=resume,
-                    node_timeout=node_timeout,
-                    max_iterations=max_iterations,
-                    tracer=tracer,
-                    hooks=hooks,
-                    on_llm_payload=observer.on_llm_payload if observer else None,
-                )
-                if tracer is not None and observer is None:
-                    typer.echo(tracer.to_json(), err=True)
-                return result
-            except GraphInterrupt as interrupt:
-                if not interactive:
-                    if tracer is not None:
+    async with graph:
+        try:
+            while True:
+                try:
+                    result = await graph.run(
+                        state,
+                        tools=tools,
+                        reducers=reducers,
+                        checkpointer=checkpointer,
+                        checkpoint_id=checkpoint_id,
+                        owner=checkpoint_owner,
+                        resume=resume,
+                        node_timeout=node_timeout,
+                        max_iterations=max_iterations,
+                        tracer=tracer,
+                        hooks=hooks,
+                        on_llm_payload=observer.on_llm_payload if observer else None,
+                    )
+                    if tracer is not None and observer is None:
                         typer.echo(tracer.to_json(), err=True)
-                    raise
-                typer.echo(
-                    f"\n-- paused: {interrupt.prompt or interrupt.key} "
-                    f"(checkpoint {interrupt.checkpoint_id!r}) --",
-                    err=True,
-                )
-                answer = input("> ").strip()
-                resume = {interrupt.key: answer}
-    finally:
-        if observer is not None:
-            observer.export()
+                    return result
+                except GraphInterrupt as interrupt:
+                    if not interactive:
+                        if tracer is not None:
+                            typer.echo(tracer.to_json(), err=True)
+                        raise
+                    typer.echo(
+                        f"\n-- paused: {interrupt.prompt or interrupt.key} "
+                        f"(checkpoint {interrupt.checkpoint_id!r}) --",
+                        err=True,
+                    )
+                    answer = input("> ").strip()
+                    resume = {interrupt.key: answer}
+        finally:
+            if observer is not None:
+                observer.export()
 
 
 def _resolve_workflow_checkpoint(
@@ -494,45 +495,48 @@ async def _daemon_loop(
             state = dict(saved.state)
 
     tick = 0
-    while True:
-        tick += 1
-        observer = observer_factory() if observer_factory else None
-        tracer = observer.tracer if observer else (RunTracer() if trace else None)
-        try:
+    async with graph:
+        while True:
+            tick += 1
+            observer = observer_factory() if observer_factory else None
+            tracer = observer.tracer if observer else (RunTracer() if trace else None)
             try:
-                state = await graph.run(
-                    state,
-                    tools=tools,
-                    reducers=reducers,
-                    node_timeout=node_timeout,
-                    max_iterations=max_iterations,
-                    tracer=tracer,
-                    hooks=hooks,
-                    on_llm_payload=observer.on_llm_payload if observer else None,
-                )
-                if tracer is not None and observer is None:
-                    typer.echo(tracer.to_json(), err=True)
-                typer.echo(json.dumps(state, ensure_ascii=False, default=str))
-                if checkpointer is not None:
-                    await checkpointer.save(
-                        checkpoint_id,
-                        Checkpoint(state=dict(state), next_node_id=None, iteration=0),
-                        owner=checkpoint_owner,
+                try:
+                    state = await graph.run(
+                        state,
+                        tools=tools,
+                        reducers=reducers,
+                        node_timeout=node_timeout,
+                        max_iterations=max_iterations,
+                        tracer=tracer,
+                        hooks=hooks,
+                        on_llm_payload=observer.on_llm_payload if observer else None,
                     )
-            except GraphInterrupt as interrupt:
-                if tracer is not None and observer is None:
-                    typer.echo(tracer.to_json(), err=True)
-                typer.echo(
-                    f"tick {tick}: paused at {interrupt.node_id!r} "
-                    f"({interrupt.prompt or interrupt.key}) — skipped in daemon mode",
-                    err=True,
-                )
-        finally:
-            if observer is not None:
-                observer.export()
-        if once:
-            return
-        await asyncio.sleep(interval)
+                    if tracer is not None and observer is None:
+                        typer.echo(tracer.to_json(), err=True)
+                    typer.echo(json.dumps(state, ensure_ascii=False, default=str))
+                    if checkpointer is not None:
+                        await checkpointer.save(
+                            checkpoint_id,
+                            Checkpoint(
+                                state=dict(state), next_node_id=None, iteration=0
+                            ),
+                            owner=checkpoint_owner,
+                        )
+                except GraphInterrupt as interrupt:
+                    if tracer is not None and observer is None:
+                        typer.echo(tracer.to_json(), err=True)
+                    typer.echo(
+                        f"tick {tick}: paused at {interrupt.node_id!r} "
+                        f"({interrupt.prompt or interrupt.key}) — skipped in daemon mode",
+                        err=True,
+                    )
+            finally:
+                if observer is not None:
+                    observer.export()
+            if once:
+                return
+            await asyncio.sleep(interval)
 
 
 @app.command()

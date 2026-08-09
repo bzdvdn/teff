@@ -1114,3 +1114,241 @@ class TestTwoLayerValidation:
         assert not looks_like_flow(
             yaml.safe_load("steps:\n  - id: a\n    type: transform\n")
         )
+
+
+class TestMcpToolInYaml:
+    def test_flow_compiles_mcp_tool(self, tmp_path):
+        src = tmp_path / "flow.yaml"
+        src.write_text(
+            textwrap.dedent(
+                """
+                name: mcp
+                default_model: llama3.1:8b
+                default_provider: ollama
+                tools:
+                  - type: mcp
+                    config: {id: demo, command: ["python", "server.py"]}
+                steps:
+                  - transform: {id: t, action: uppercase, input_key: a,
+                                output_key: b}
+                """
+            )
+        )
+        from teff.flow.compiler import load_flow
+        from teff.tool import McpToolGroup
+
+        graph, tools, _initial, _reducers = load_flow(str(src))
+        assert list(graph.nodes) == ["t"]
+        (group,) = tools
+        assert isinstance(group, McpToolGroup)
+        assert group.id == "demo"
+        assert group._command == ["python", "server.py"]
+
+    def test_graph_loads_mcp_tool(self, tmp_path):
+        src = tmp_path / "g.yaml"
+        src.write_text(
+            textwrap.dedent(
+                """
+                name: g
+                tools:
+                  - type: mcp
+                    config: {id: drive, url: "http://localhost:8000/mcp"}
+                steps:
+                  - id: t1
+                    type: transform
+                    config: {action: uppercase, input_key: a, output_key: b}
+                """
+            )
+        )
+        from teff.tool import McpToolGroup
+        from teff.yaml import load_workflow
+
+        graph, tools, _initial, _reducers = load_workflow(str(src))
+        (group,) = tools
+        assert isinstance(group, McpToolGroup)
+        assert group.id == "drive"
+        assert group._url == "http://localhost:8000/mcp"
+
+    def test_validate_flow_mcp_config_requires_url_or_command(self, tmp_path):
+        from teff.yaml_schema import validate_flow_file
+
+        p = tmp_path / "bad.yaml"
+        p.write_text(
+            textwrap.dedent(
+                """
+                name: bad
+                tools:
+                  - type: mcp
+                    config: {id: demo}
+                steps:
+                  - transform: {id: t, action: uppercase, input_key: a,
+                                output_key: b}
+                """
+            )
+        )
+        errors = validate_flow_file(str(p))
+        assert any("exactly one" in e["message"] for e in errors)
+        assert any(e["path"] == "tools[0].config" for e in errors)
+
+    def test_validate_graph_mcp_config_valid(self, tmp_path):
+        from teff.yaml_schema import validate_workflow_file
+
+        p = tmp_path / "ok.yaml"
+        p.write_text(
+            textwrap.dedent(
+                """
+                name: ok
+                tools:
+                  - type: mcp
+                    config: {id: demo, command: ["uvx", "mcp-server-git"]}
+                steps:
+                  - id: t1
+                    type: transform
+                    config: {action: uppercase, input_key: a, output_key: b}
+                """
+            )
+        )
+        assert not validate_workflow_file(str(p))
+
+    def test_flow_unknown_uses_mcp_in_use_tools(self, tmp_path):
+        """mcp members appear to the agent as ``<id>__<tool>`` names."""
+        src = tmp_path / "flow.yaml"
+        src.write_text(
+            textwrap.dedent(
+                """
+                name: mcp
+                default_model: llama3.1:8b
+                default_provider: ollama
+                tools:
+                  - type: mcp
+                    config: {id: demo, command: ["python", "server.py"]}
+                steps:
+                  - agent: {id: bot, system: "You are helpful.",
+                           use_tools: [demo__add]}
+                """
+            )
+        )
+        from teff.flow.compiler import load_flow
+
+        graph, tools, _initial, _reducers = load_flow(str(src))
+        from teff.tool import McpToolGroup
+
+        assert isinstance(tools[0], McpToolGroup)
+        assert tools[0].id == "demo"
+
+    def test_flow_yaml_mcp_preset_builds_group(self, tmp_path):
+        src = tmp_path / "flow.yaml"
+        src.write_text(
+            textwrap.dedent(
+                """
+                name: mcp
+                default_model: llama3.1:8b
+                default_provider: ollama
+                tools:
+                  - type: mcp
+                    config:
+                      preset: google_drive
+                      env: {GOOGLE_DRIVE_REFRESH_TOKEN: "tok"}
+                steps:
+                  - transform: {id: t, action: uppercase, input_key: a,
+                                output_key: b}
+                """
+            )
+        )
+        from teff.flow.compiler import load_flow
+        from teff.tool import McpToolGroup
+
+        _graph, tools, _initial, _reducers = load_flow(str(src))
+        (group,) = tools
+        assert isinstance(group, McpToolGroup)
+        assert group.id == "google_drive"
+        assert group._command[0] == "npx"
+        assert group._env["GOOGLE_DRIVE_REFRESH_TOKEN"] == "tok"
+        assert group._env["GOOGLE_DRIVE_CLIENT_ID"] == ""
+
+    def test_flow_yaml_mcp_preset_merges_env(self, tmp_path):
+        src = tmp_path / "flow.yaml"
+        src.write_text(
+            textwrap.dedent(
+                """
+                name: mcp
+                tools:
+                  - type: mcp
+                    config:
+                      preset: gmail
+                      id: mail
+                steps:
+                  - id: t1
+                    type: transform
+                    config: {action: uppercase, input_key: a, output_key: b}
+                """
+            )
+        )
+        from teff.tool import McpToolGroup
+        from teff.yaml import load_workflow
+
+        _graph, tools, _initial, _reducers = load_workflow(str(src))
+        (group,) = tools
+        assert isinstance(group, McpToolGroup)
+        assert group.id == "mail"
+        assert group._command == ["npx", "-y", "@google/mcp-server-gmail"]
+
+    def test_validate_flow_mcp_preset_valid(self, tmp_path):
+        from teff.yaml_schema import validate_flow_file
+
+        p = tmp_path / "ok.yaml"
+        p.write_text(
+            textwrap.dedent(
+                """
+                name: ok
+                tools:
+                  - type: mcp
+                    config: {preset: google_calendar}
+                steps:
+                  - transform: {id: t, action: uppercase, input_key: a,
+                                output_key: b}
+                """
+            )
+        )
+        assert not validate_flow_file(str(p))
+
+    def test_validate_flow_mcp_unknown_preset(self, tmp_path):
+        from teff.yaml_schema import validate_flow_file
+
+        p = tmp_path / "bad.yaml"
+        p.write_text(
+            textwrap.dedent(
+                """
+                name: bad
+                tools:
+                  - type: mcp
+                    config: {preset: nope}
+                steps:
+                  - transform: {id: t, action: uppercase, input_key: a,
+                                output_key: b}
+                """
+            )
+        )
+        errors = validate_flow_file(str(p))
+        assert any("unknown mcp preset" in e["message"] for e in errors)
+        assert any(e["path"] == "tools[0].config.preset" for e in errors)
+
+    def test_validate_graph_mcp_preset_valid(self, tmp_path):
+        from teff.yaml_schema import validate_workflow_file
+
+        p = tmp_path / "ok.yaml"
+        p.write_text(
+            textwrap.dedent(
+                """
+                name: ok
+                tools:
+                  - type: mcp
+                    config: {preset: google_drive}
+                steps:
+                  - id: t1
+                    type: transform
+                    config: {action: uppercase, input_key: a, output_key: b}
+                """
+            )
+        )
+        assert not validate_workflow_file(str(p))

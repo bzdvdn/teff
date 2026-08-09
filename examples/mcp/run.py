@@ -2,8 +2,10 @@
 
 Connects the graph to the local MCP server in ``server.py`` over stdio
 and exposes its tools to a :class:`~teff.node.agent.ReActAgent` loop.
-Any MCP server works the same way — point ``mcp_tools`` at a Streamable
-HTTP endpoint (``url=...``) or a stdio command (``command=...``).
+Any MCP server works the same way — point a ``McpToolGroup`` at a
+Streamable HTTP endpoint (``url=...``) or a stdio command (``command=...``)
+and pass the group straight to ``graph.run``: the connection opens lazily
+and lives for the graph, closed by ``async with graph``.
 
 Requires Ollama running locally with llama3.1:8b (the `mcp` SDK ships with
 the core package).
@@ -18,7 +20,7 @@ from pathlib import Path
 
 from teff.flow import Flow
 from teff.provider import ProviderRegistry
-from teff.tool import mcp_tools
+from teff.tool import McpToolGroup
 
 SERVER = Path(__file__).resolve().parent / "server.py"
 
@@ -40,8 +42,8 @@ async def main():
     )
     graph = flow.compile()
 
-    async with mcp_tools(command=[sys.executable, str(SERVER)]) as tools:
-        print("MCP tools:", [t.name for t in tools])
+    tools = [McpToolGroup(id="demo", command=[sys.executable, str(SERVER)])]
+    async with graph:
         result = await graph.run(
             state={"query": "What is the weather in Tokyo?"},
             tools=tools,

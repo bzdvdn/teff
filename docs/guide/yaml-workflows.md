@@ -242,12 +242,40 @@ tools:
   - type: python_eval
   - type: rag
     config: {store: sqlite, collection: docs}
+  - type: mcp                      # all tools of an MCP server
+    config:
+      id: drive
+      command: [uvx, mcp-server-google-drive]
 ```
 
 Each entry is `{type, config}`; `config` is tool-specific. See the
 [tools reference](../reference/tools.md) for every built-in tool and its
 config keys. RAG tools resolve relative store paths against the workflow file.
 An unknown tool type fails validation.
+
+`type: mcp` connects to a Model Context Protocol server: exactly one of
+`url:` (streamable HTTP) or `command:` (stdio argv) is required, and the
+server's tools become available as `<id>__<tool>` (e.g. `drive__search_files`).
+The connection opens lazily on first use and is shared across runs — close it
+with `graph.aclose()` (the CLI does this for you after `run`/`daemon`).
+
+For known servers a `preset:` gives the command and env keys in one shot,
+with `env:` merging your overrides over the defaults — no `url`/`command`
+needed:
+
+```yaml
+tools:
+  - type: mcp
+    config:
+      preset: google_drive   # npx: google_drive | gmail | google_calendar
+      env: {GOOGLE_DRIVE_REFRESH_TOKEN: "${GDRIVE_TOKEN}"}
+  - type: mcp
+    config:
+      preset: git            # uvx (Python): git | fetch | time | sqlite
+```
+
+Google presets launch via `npx` (Node.js required); the `uvx` presets are
+pure Python. A missing launcher (`npx`/`uvx`) fails with a clear error.
 
 ## Tracing a workflow (`observability:`)
 

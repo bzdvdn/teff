@@ -4,8 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import time
+import typing
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable, Mapping, overload
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Mapping,
+    Sequence,
+    cast,
+    overload,
+)
 
 from teff.checkpoint import DEFAULT_OWNER, Checkpoint, Checkpointer
 from teff.graph.edge import _INTERRUPT_KEY, Edge, Hook
@@ -23,6 +33,9 @@ from teff.state import Reducer, State
 from teff.stream import StreamEvent
 from teff.tool.tool import Tool
 from teff.trace import RunTracer, _ms
+
+if typing.TYPE_CHECKING:
+    from teff.tool.mcp import McpToolGroup
 
 __all__ = ["Edge", "Graph", "Hook", "TurnResult"]
 
@@ -91,12 +104,60 @@ class Graph:
         self.providers: ProviderRegistry = to_provider_registry(providers)
         self.default_provider: str | None = default_provider
         self.default_model: str | None = default_model
+        self._tool_groups: dict[str, Any] = {}
+
+    async def _expand_tools(
+        self, tools: "Sequence[Any] | None"
+    ) -> "list[Tool | McpToolGroup] | None":
+        """Open any MCP tool groups in *tools* once and return their members.
+
+        Groups are keyed by server id and cached on the graph, so repeated
+        ``run``/``stream`` calls (daemon ticks, conversation turns) reuse
+        the same connection instead of re-spawning the server.  The cached
+        connections are closed by :meth:`aclose`.
+        """
+        if not tools:
+            return None if tools is None else list(tools)
+        expanded: "list[Tool | McpToolGroup]" = []
+        for tool in tools:
+            group = getattr(tool, "is_mcp_group", None)
+            if group:
+                entry = self._tool_groups.get(group.id)
+                if entry is None:
+                    members = await group.open()
+                    self._tool_groups[group.id] = (group, members)
+                else:
+                    members = entry[1]
+                expanded.extend(members)
+            else:
+                expanded.append(tool)
+        return expanded
+
+    async def aclose(self) -> None:
+        """Close connection-backed tools (e.g. MCP servers) opened by this
+        graph.  Idempotent; safe to call after a partial or cancelled run.
+
+        Conveniently, the graph is also an async context manager, so
+        ``async with graph:`` closes everything on exit::
+
+            async with graph:
+                result = await graph.run(state, tools=tools)
+        """
+        for group, _members in self._tool_groups.values():
+            await group.aclose()
+        self._tool_groups.clear()
+
+    async def __aenter__(self) -> "Graph":
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self.aclose()
 
     @overload
     async def run(
         self,
         state: dict | State,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         registry: NodeRegistry | None = None,
         reducers: dict[str, Reducer] | None = None,
         hooks: dict[str, Callable] | None = None,
@@ -126,7 +187,7 @@ class Graph:
     async def run(
         self,
         state: dict | State,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         registry: NodeRegistry | None = None,
         reducers: dict[str, Reducer] | None = None,
         hooks: dict[str, Callable] | None = None,
@@ -155,7 +216,7 @@ class Graph:
     async def run(
         self,
         state: dict | State,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         registry: NodeRegistry | None = None,
         reducers: dict[str, Reducer] | None = None,
         hooks: dict[str, Callable] | None = None,
@@ -282,6 +343,7 @@ class Graph:
             Final state (same type as passed in) on a plain run, or a
             :class:`TurnResult` for a conversation turn.
         """
+        expanded_tools = cast("list[Tool] | None", await self._expand_tools(tools))
         if message is not None:
             if checkpointer is None or checkpoint_id is None:
                 raise ValueError(
@@ -291,7 +353,7 @@ class Graph:
                 checkpoint_id,
                 message,
                 checkpointer=checkpointer,
-                tools=tools,
+                tools=cast("list[Tool | McpToolGroup] | None", expanded_tools),
                 reducers=reducers,
                 initial_state=initial_state,
                 transient_keys=transient_keys,
@@ -315,7 +377,7 @@ class Graph:
             result = await execute(
                 self,
                 state,
-                tools=tools,
+                tools=expanded_tools,
                 registry=registry,
                 reducers=reducers,
                 hooks=hooks,
@@ -367,7 +429,7 @@ class Graph:
     async def stream(
         self,
         state: dict | State,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         registry: NodeRegistry | None = None,
         reducers: dict[str, Reducer] | None = None,
         hooks: dict[str, Callable] | None = None,
@@ -419,6 +481,7 @@ class Graph:
 
         Parameters mirror :meth:`run` (including ``owner``).
         """
+        expanded_tools = cast("list[Tool] | None", await self._expand_tools(tools))
         if message is not None:
             if checkpointer is None or checkpoint_id is None:
                 raise ValueError(
@@ -428,7 +491,7 @@ class Graph:
                 checkpoint_id,
                 message,
                 checkpointer=checkpointer,
-                tools=tools,
+                tools=cast("list[Tool | McpToolGroup] | None", expanded_tools),
                 reducers=reducers,
                 initial_state=initial_state,
                 transient_keys=transient_keys,
@@ -462,7 +525,7 @@ class Graph:
                     await execute(
                         self,
                         state,
-                        tools=tools,
+                        tools=expanded_tools,
                         registry=registry,
                         reducers=reducers,
                         hooks=hooks,
@@ -681,7 +744,7 @@ class Graph:
         message: str,
         *,
         checkpointer: Checkpointer,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         reducers: dict[str, Reducer] | None = None,
         initial_state: "Callable[[], Mapping[str, object]] | None" = None,
         transient_keys: tuple[str, ...] = (),
@@ -768,7 +831,7 @@ class Graph:
         message: str,
         *,
         checkpointer: Checkpointer,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         reducers: dict[str, Reducer] | None = None,
         initial_state: "Callable[[], Mapping[str, object]] | None" = None,
         transient_keys: tuple[str, ...] = (),
@@ -817,7 +880,7 @@ class Graph:
         resume: dict,
         *,
         checkpointer: Checkpointer,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         reducers: dict[str, Reducer] | None = None,
         owner: str = DEFAULT_OWNER,
         max_iterations: int | None = None,
@@ -860,7 +923,7 @@ class Graph:
         message: str,
         *,
         checkpointer: Checkpointer,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         reducers: dict[str, Reducer] | None = None,
         initial_state: "Callable[[], Mapping[str, object]] | None" = None,
         transient_keys: tuple[str, ...] = (),
@@ -908,7 +971,7 @@ class Graph:
         resume: dict,
         *,
         checkpointer: Checkpointer,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         reducers: dict[str, Reducer] | None = None,
         owner: str = DEFAULT_OWNER,
         max_iterations: int | None = None,
@@ -944,7 +1007,7 @@ class Graph:
         message: str,
         *,
         checkpointer: Checkpointer,
-        tools: list[Tool] | None = None,
+        tools: "Sequence[Tool | McpToolGroup] | None" = None,
         reducers: dict[str, Reducer] | None = None,
         initial_state: "Callable[[], Mapping[str, object]] | None" = None,
         transient_keys: tuple[str, ...] = (),
