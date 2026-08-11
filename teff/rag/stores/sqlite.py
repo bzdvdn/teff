@@ -40,6 +40,7 @@ class SQLiteVectorStore(VectorStore):
 
     async def _run(self, fn, *args, **kwargs):
         """Run a sync DB call in a worker thread, serialised by the lock."""
+
         def _call():
             with self._lock:
                 return fn(*args, **kwargs)

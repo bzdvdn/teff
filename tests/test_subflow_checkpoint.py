@@ -54,8 +54,14 @@ class TestSubFlowInterruptResume:
                 )
             )
         )
-        outer = Flow("outer").add_flow(inner, id="inner").step(
-            Transform({"action": "uppercase", "input_key": "final", "output_key": "done"})
+        outer = (
+            Flow("outer")
+            .add_flow(inner, id="inner")
+            .step(
+                Transform(
+                    {"action": "uppercase", "input_key": "final", "output_key": "done"}
+                )
+            )
         )
         g = outer.compile()
         cp = JSONFileCheckpointer(str(tmp_path))
@@ -98,8 +104,12 @@ class TestSubFlowInterruptResume:
     def test_resume_without_answer_reraises_nested(self, tmp_path):
         from teff.checkpoint import JSONFileCheckpointer
 
-        inner = Flow("inner").interrupt("ok", "Ok?").step(
-            Transform({"action": "uppercase", "input_key": "x", "output_key": "y"})
+        inner = (
+            Flow("inner")
+            .interrupt("ok", "Ok?")
+            .step(
+                Transform({"action": "uppercase", "input_key": "x", "output_key": "y"})
+            )
         )
         g = Flow("outer").add_flow(inner, id="inner").compile()
         cp = JSONFileCheckpointer(str(tmp_path))
@@ -130,7 +140,9 @@ class TestSubFlowErrorRetry:
 
         inner = (
             Flow("inner")
-            .step(Transform({"action": "uppercase", "input_key": "x", "output_key": "a"}))
+            .step(
+                Transform({"action": "uppercase", "input_key": "x", "output_key": "a"})
+            )
             .step(_Flaky(key="b"))
         )
         outer = Flow("outer").add_flow(inner, id="inner")

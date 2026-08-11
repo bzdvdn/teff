@@ -5,7 +5,6 @@ family: append a single node to the running chain.  :class:`Flow` owns an
 instance and delegates to it.
 """
 
-
 from teff.node.context import AppendAssistant, ContextBuilder
 from teff.node.llm import LLM
 from teff.node.node import Node

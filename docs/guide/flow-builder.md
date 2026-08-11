@@ -44,7 +44,7 @@ when the callable (or string condition) matches. Follow it with `default(node)`:
 ```python
 flow.step(decider)
 flow.step(handle_yes, when=lambda s: s["ok"])
-flow.default(handle_no)   # runs when the guard fails
+flow.default(handle_no)  # runs when the guard fails
 ```
 
 The guarded step's edge wins on a match, so `default()` fires only when the
