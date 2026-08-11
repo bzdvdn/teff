@@ -121,6 +121,66 @@ await graph.run(
 File, SQLite and PostgreSQL checkpointers included — see
 [Durable (checkpoints)](docs/guide/durable.md).
 
+Here is the crash in the flesh: the run dies mid-flight, and the next run
+with the same `checkpoint_id` continues **from the node that failed** — the
+earlier nodes do not re-execute:
+
+```python
+class Count(Node):
+    type = "count"
+
+    async def execute(self, ctx, state):
+        state["processed"] = state.get("processed", 0) + 1
+        return state
+
+
+class Fetch(Node):
+    type = "fetch"
+
+    def __init__(self, **config):
+        super().__init__(**config)
+        self._down = True  # simulate an outage on the first attempt
+
+    async def execute(self, ctx, state):
+        if self._down:
+            self._down = False
+            raise RuntimeError("API unreachable")
+        state["data"] = {"status": "ok"}
+        return state
+
+
+flow = (
+    Flow("etl")
+    .step(Count())  # node 1 — ran once, ever
+    .step(Fetch())  # node 2 — crashes on the first attempt
+    .transform(action="value", value="done", output_key="status")
+)
+graph = flow.compile()
+cp = JSONFileCheckpointer("data/checkpoints")
+
+try:  # 1) run crashes at Fetch
+    await graph.run({}, checkpointer=cp, checkpoint_id="run-9")
+except RuntimeError:
+    pass
+
+saved = await cp.load("run-9")  # checkpoint still points at Fetch
+assert saved.next_node_id == "fetch_2"
+
+await graph.run({}, checkpointer=cp, checkpoint_id="run-9")  # 2) resume
+result = await graph.get_state("run-9", checkpointer=cp)
+
+assert result["processed"] == 1  # Count did NOT re-run
+assert result["data"] == {"status": "ok"}
+assert result["status"] == "done"
+```
+
+In action — the same crash/recovery against a real LLM (Ollama) plus a look
+at the persisted checkpoint:
+
+| Crash mid-LLM run, resume from the failed node (`checkpoint_resume` example)                           |
+| ------------------------------------------------------------------------------------------------------ |
+| ![Teff CLI demo: LLM run crashes, resumes from the failed node](docs/assets/checkpoint-resume-cli.gif) |
+
 ### Python when you need it
 
 YAML is optional. The same graph builds directly in Python — the Flow API
@@ -148,6 +208,45 @@ result = await graph.run({"text": "Hello world"})
 
 Every node stays inspectable and the whole thing is one YAML export away —
 see [Flow builder](docs/guide/flow-builder.md).
+
+### Human-in-the-loop is a step
+
+An `interrupt()` is just another node — a gate that pauses the run with the
+state in hand. The same checkpoint that survives crashes also survives the
+human: resume hands the reply back and execution continues from exactly
+where it stopped:
+
+```python
+from teff.checkpoint.file import JSONFileCheckpointer
+from teff.flow import Flow
+from teff.node.interrupt import GraphInterrupt
+
+flow = (
+    Flow("review")
+    .llm(prompt="Draft an email about {topic}", output_key="draft")
+    .interrupt("approve", prompt="Approve the draft?")
+    .transform(action="uppercase", input_key="draft", output_key="final")
+)
+graph = flow.compile()
+cp = JSONFileCheckpointer("data/checkpoints")
+
+try:  # 1) run pauses at the gate
+    await graph.run({"topic": "refund"}, checkpointer=cp, checkpoint_id="run-7")
+except GraphInterrupt:
+    pass
+
+draft = (await graph.get_state("run-7", checkpointer=cp))["draft"]  # inspect
+
+await graph.run(  # 2) days later — resume in place
+    {},
+    checkpointer=cp,
+    checkpoint_id="run-7",
+    resume={"approve": "yes"},
+)
+```
+
+The pause, the review and the resume are all data — inspectable, editable and
+portable between machines. See [Durable (human-in-the-loop)](docs/guide/durable.md).
 
 Beneath the `Flow` builder sits the low-level **Graph API** — `Graph` +
 `Node` + `Edge` — for hand-wiring every arrow, a custom `Node` subclass, or
@@ -283,13 +382,11 @@ steps:
       parse: true
 
   - transform:
-      {
         id: take_note,
         action: json_get,
         input_key: critic,
         field: note,
         output_key: critic_note,
-      }
 
   - append_assistant: { output_key: poem, messages_key: messages }
 
@@ -335,12 +432,10 @@ steps:
       goto: approval
 
   - transform:
-      {
         id: done,
         action: value,
         value: "Poem done — hope you like it!",
         output_key: done,
-      }
 ```
 
 The steps above chain top-to-bottom automatically — a `context_builder`

@@ -45,8 +45,8 @@ Flow DSL, how reducers merge branch results, and how `Map` differs from
 Teff's differentiator: a run is **checkpointable and resumable**, and it can
 **pause for approval**.
 
-- [checkpoint_resume](https://github.com/bzdvdn/teff/tree/master/examples/checkpoint_resume/) — crash/resume in a
-  few lines.
+- [checkpoint_resume](https://github.com/bzdvdn/teff/tree/master/examples/checkpoint_resume/) — crash mid-LLM
+  run, resume from the failed node (counters prove no node re-ran).
 - [checkpoint_stores](https://github.com/bzdvdn/teff/tree/master/examples/checkpoint_stores/) — file / SQLite / PG.
 - [human_in_loop](https://github.com/bzdvdn/teff/tree/master/examples/human_in_loop/) — `Interrupt` + `loop()` +
   resume (Python and YAML).

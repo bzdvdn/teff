@@ -30,7 +30,7 @@ README for exact commands.
 | [structured_output](https://github.com/bzdvdn/teff/tree/master/examples/structured_output/) | Schema-validated LLM JSON via `output_type` / `json_schema` |
 | [rag_search](https://github.com/bzdvdn/teff/tree/master/examples/rag_search/) | RAG over a local CSV, in-memory store |
 | [rag_stores](https://github.com/bzdvdn/teff/tree/master/examples/rag_stores/) | Same RAG agent on every vector store |
-| [checkpoint_resume](https://github.com/bzdvdn/teff/tree/master/examples/checkpoint_resume/) | Crash/resume in a few lines |
+| [checkpoint_resume](https://github.com/bzdvdn/teff/tree/master/examples/checkpoint_resume/) | Crash mid-LLM run, resume from the failed node — no tokens wasted |
 | [checkpoint_stores](https://github.com/bzdvdn/teff/tree/master/examples/checkpoint_stores/) | Durable workflow on file/sqlite/pg |
 | [release_features](https://github.com/bzdvdn/teff/tree/master/examples/release_features/) | Release API tour — validation, typed errors, `teff eval`, cost reports, response cache (mocked, no API key) |
 | [simple_router](https://github.com/bzdvdn/teff/tree/master/examples/simple_router/) | Minimal `Flow.route()` supervisor — two agents, a bounded loop (can't hang), offline tests |

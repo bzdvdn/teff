@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — MCP tools & durable execution
+
+This release wires agents to **Model Context Protocol** servers (`type: mcp`
+in both YAML surfaces, with launch presets for common npx/uvx servers) and
+hardens **durability**: async checkpointers, a single `branch(..., default=)`
+fallback surface, and interrupts inside `SubFlow`s that stay resumable in
+place across restarts.
+
+Highlights:
 
 - **MCP servers as tools** — `type: mcp` in `tools:` (both YAML surfaces)
   connects to a Model Context Protocol server (streamable-http `url:` or
@@ -51,6 +59,10 @@
   *before* emitting the `interrupt` event, so cancelling a paused run can no
   longer observe a stale `pending()` without the interrupt. The
   `interrupt`→`checkpoint` observer ordering is unchanged.
+- **Crash-recovery demo** — the `checkpoint_resume` example now runs a real
+  LLM call and proves durability with counters (`processed == 1`,
+  `llm_calls == 1` — no node or model call re-runs after resume), with a
+  terminal GIF of the crash/resume/inspect flow in the README.
 
 ## 0.2.0 — flow.yaml authoring layer
 
