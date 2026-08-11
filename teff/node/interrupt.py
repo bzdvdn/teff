@@ -22,6 +22,10 @@ class GraphInterrupt(TeffError):
         node_id: Id of the interrupt node that paused execution.
         checkpoint_id: Pass this back to ``graph.run()`` with the same
             checkpointer together with ``resume`` to continue.
+        nested_checkpoint_id: When the interrupt fired inside a
+            :class:`~teff.flow.sub_flow.SubFlow`, the checkpoint id the
+            sub-flow paused under.  Resuming routes back into the sub-flow
+            instead of continuing past it.
     """
 
     def __init__(
@@ -36,6 +40,7 @@ class GraphInterrupt(TeffError):
         self.prompt = prompt
         self.node_id = node_id
         self.checkpoint_id = checkpoint_id
+        self.nested_checkpoint_id: str | None = None
 
 
 class Interrupt(Node):

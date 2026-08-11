@@ -76,7 +76,9 @@ class TestFlow:
                 return state
 
         flow = (
-            Flow("t").step(CN({})).branch("mode", Case("a").add(AN({}))).default(FN({}))
+            Flow("t")
+            .step(CN({}))
+            .branch("mode", Case("a").add(AN({})), default=FN({}))
         )
         g = flow.compile()
         r = asyncio.run(g.run(state={}))

@@ -241,20 +241,24 @@ async def _execute_impl(
                 node_id=pending.get("node_id"),
                 checkpoint_id=cid or None,
             )
-        for key, value in resume.items():
-            state[key] = value
+        interrupt_node = pending.get("node_id")
+        nested_checkpoint_id = pending.get("nested_checkpoint_id")
+        if nested_checkpoint_id is None:
+            for key, value in resume.items():
+                state[key] = value
         if tracer is not None:
-            tracer.interrupt_resume(pending.get("node_id"), list(resume.keys()))
+            tracer.interrupt_resume(interrupt_node, list(resume.keys()))
         if emit is not None:
             await emit(
                 StreamEvent(
                     "interrupt_resume",
-                    node_id=pending.get("node_id"),
+                    node_id=interrupt_node,
                     data={"keys": list(resume.keys())},
                 )
             )
-        interrupt_node = pending.get("node_id")
-        if interrupt_node is not None:
+        if nested_checkpoint_id is not None:
+            current_id = interrupt_node
+        elif interrupt_node is not None:
             outgoing = [
                 e
                 for e in graph.edges
@@ -286,6 +290,7 @@ async def _execute_impl(
                 checkpointer=checkpointer,
                 checkpoint_id=cid,
                 owner=owner,
+                resume=resume if pending is not None else None,
                 on_llm_payload=on_llm_payload,
             )
             start = time.monotonic()
@@ -334,20 +339,13 @@ async def _execute_impl(
                 log.info("interrupt key=%s prompt=%r", exc.key, exc.prompt)
                 if tracer is not None:
                     tracer.interrupt(current_id, exc.key, exc.prompt)
-                if emit is not None:
-                    await emit(
-                        StreamEvent(
-                            "interrupt",
-                            node_id=current_id,
-                            data={"key": exc.key, "prompt": exc.prompt},
-                        )
-                    )
                 if checkpointer is not None:
                     pending = dict(state)
                     pending[_INTERRUPT_KEY] = {
                         "key": exc.key,
                         "prompt": exc.prompt,
                         "node_id": current_id,
+                        "nested_checkpoint_id": exc.nested_checkpoint_id,
                     }
                     await checkpointer.save(
                         cid,
@@ -360,7 +358,15 @@ async def _execute_impl(
                     )
                     if tracer is not None:
                         tracer.checkpoint("save", cid, None)
-                    if emit is not None:
+                if emit is not None:
+                    await emit(
+                        StreamEvent(
+                            "interrupt",
+                            node_id=current_id,
+                            data={"key": exc.key, "prompt": exc.prompt},
+                        )
+                    )
+                    if checkpointer is not None:
                         await emit(
                             StreamEvent(
                                 "checkpoint",

@@ -1,7 +1,9 @@
 """SQLite checkpointing — stdlib only, shared file format with the RAG store."""
 
+import asyncio
 import json
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -19,6 +21,10 @@ class SQLiteCheckpointer(Checkpointer):
     their rows move under :data:`~teff.checkpoint.DEFAULT_OWNER`, and an
     ``updated_at`` column is added for TTL cleanup.
 
+    All database work runs in a worker thread (``asyncio.to_thread``) behind
+    a lock, so checkpoint saves never block the event loop — important when
+    many parallel branches checkpoint through the same store.
+
     Args:
         path: Path to the SQLite database file.
     """
@@ -26,7 +32,8 @@ class SQLiteCheckpointer(Checkpointer):
     def __init__(self, path: str):
         self._path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(path)
+        self._lock = threading.Lock()
+        self._conn = sqlite3.connect(path, check_same_thread=False)
         self._migrate()
         self._conn.execute(
             """
@@ -82,7 +89,16 @@ class SQLiteCheckpointer(Checkpointer):
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
+
+    async def _run(self, fn, *args, **kwargs):
+        """Run a sync DB call in a worker thread, serialised by the lock."""
+        def _call():
+            with self._lock:
+                return fn(*args, **kwargs)
+
+        return await asyncio.to_thread(_call)
 
     async def save(
         self,
@@ -91,35 +107,41 @@ class SQLiteCheckpointer(Checkpointer):
         *,
         owner: str = DEFAULT_OWNER,
     ) -> None:
-        self._conn.execute(
-            """
-            INSERT INTO checkpoints (owner, checkpoint_id, state, next_node_id, iteration, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(owner, checkpoint_id) DO UPDATE SET
-                state = excluded.state,
-                next_node_id = excluded.next_node_id,
-                iteration = excluded.iteration,
-                updated_at = excluded.updated_at
-            """,
-            (
-                owner,
-                checkpoint_id,
-                json.dumps(checkpoint.state, ensure_ascii=False),
-                checkpoint.next_node_id,
-                checkpoint.iteration,
-                time.time(),
-            ),
-        )
-        self._conn.commit()
+        def _save():
+            self._conn.execute(
+                """
+                INSERT INTO checkpoints (owner, checkpoint_id, state, next_node_id, iteration, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(owner, checkpoint_id) DO UPDATE SET
+                    state = excluded.state,
+                    next_node_id = excluded.next_node_id,
+                    iteration = excluded.iteration,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    owner,
+                    checkpoint_id,
+                    json.dumps(checkpoint.state, ensure_ascii=False),
+                    checkpoint.next_node_id,
+                    checkpoint.iteration,
+                    time.time(),
+                ),
+            )
+            self._conn.commit()
+
+        await self._run(_save)
 
     async def load(
         self, checkpoint_id: str, *, owner: str = DEFAULT_OWNER
     ) -> Checkpoint | None:
-        row = self._conn.execute(
-            "SELECT state, next_node_id, iteration FROM checkpoints "
-            "WHERE owner = ? AND checkpoint_id = ?",
-            (owner, checkpoint_id),
-        ).fetchone()
+        def _load():
+            return self._conn.execute(
+                "SELECT state, next_node_id, iteration FROM checkpoints "
+                "WHERE owner = ? AND checkpoint_id = ?",
+                (owner, checkpoint_id),
+            ).fetchone()
+
+        row = await self._run(_load)
         if row is None:
             return None
         return Checkpoint(
@@ -129,18 +151,25 @@ class SQLiteCheckpointer(Checkpointer):
         )
 
     async def delete(self, checkpoint_id: str, *, owner: str = DEFAULT_OWNER) -> None:
-        self._conn.execute(
-            "DELETE FROM checkpoints WHERE owner = ? AND checkpoint_id = ?",
-            (owner, checkpoint_id),
-        )
-        self._conn.commit()
+        def _delete():
+            self._conn.execute(
+                "DELETE FROM checkpoints WHERE owner = ? AND checkpoint_id = ?",
+                (owner, checkpoint_id),
+            )
+            self._conn.commit()
+
+        await self._run(_delete)
 
     async def list(self, owner: str = DEFAULT_OWNER) -> list[str]:
         """Return all checkpoint IDs persisted for *owner*."""
-        rows = self._conn.execute(
-            "SELECT checkpoint_id FROM checkpoints WHERE owner = ? ORDER BY checkpoint_id",
-            (owner,),
-        ).fetchall()
+
+        def _list():
+            return self._conn.execute(
+                "SELECT checkpoint_id FROM checkpoints WHERE owner = ? ORDER BY checkpoint_id",
+                (owner,),
+            ).fetchall()
+
+        rows = await self._run(_list)
         return [r[0] for r in rows]
 
     async def cleanup(
@@ -151,41 +180,45 @@ class SQLiteCheckpointer(Checkpointer):
         keep_last: int | None = None,
     ) -> int:
         """Delete stale checkpoints; returns how many were removed."""
-        if max_age is None and keep_last is None:
-            return 0
-        removed = 0
-        now = time.time()
-        if owner is not None:
-            owners = [owner]
-        else:
-            owners = [
-                r[0]
-                for r in self._conn.execute(
-                    "SELECT DISTINCT owner FROM checkpoints"
-                ).fetchall()
-            ]
-        for own in owners:
-            if max_age is not None:
-                cur = self._conn.execute(
-                    "DELETE FROM checkpoints WHERE owner = ? AND "
-                    "COALESCE(updated_at, 0) < ?",
-                    (own, now - max_age),
-                )
-                removed += cur.rowcount
-            if keep_last is not None:
-                stale = [
+
+        def _cleanup():
+            if max_age is None and keep_last is None:
+                return 0
+            removed = 0
+            now = time.time()
+            if owner is not None:
+                owners = [owner]
+            else:
+                owners = [
                     r[0]
                     for r in self._conn.execute(
-                        "SELECT checkpoint_id FROM checkpoints WHERE owner = ? "
-                        "ORDER BY COALESCE(updated_at, 0) DESC LIMIT -1 OFFSET ?",
-                        (own, keep_last),
+                        "SELECT DISTINCT owner FROM checkpoints"
                     ).fetchall()
                 ]
-                for cid in stale:
-                    self._conn.execute(
-                        "DELETE FROM checkpoints WHERE owner = ? AND checkpoint_id = ?",
-                        (own, cid),
+            for own in owners:
+                if max_age is not None:
+                    cur = self._conn.execute(
+                        "DELETE FROM checkpoints WHERE owner = ? AND "
+                        "COALESCE(updated_at, 0) < ?",
+                        (own, now - max_age),
                     )
-                    removed += 1
-        self._conn.commit()
-        return removed
+                    removed += cur.rowcount
+                if keep_last is not None:
+                    stale = [
+                        r[0]
+                        for r in self._conn.execute(
+                            "SELECT checkpoint_id FROM checkpoints WHERE owner = ? "
+                            "ORDER BY COALESCE(updated_at, 0) DESC LIMIT -1 OFFSET ?",
+                            (own, keep_last),
+                        ).fetchall()
+                    ]
+                    for cid in stale:
+                        self._conn.execute(
+                            "DELETE FROM checkpoints WHERE owner = ? AND checkpoint_id = ?",
+                            (own, cid),
+                        )
+                        removed += 1
+            self._conn.commit()
+            return removed
+
+        return await self._run(_cleanup)

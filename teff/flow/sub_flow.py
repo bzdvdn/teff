@@ -4,6 +4,7 @@ import copy
 from typing import Awaitable, Callable
 
 from teff.graph import Edge, Graph
+from teff.node.interrupt import GraphInterrupt
 from teff.node.node import Node
 from teff.state import reducer_appends
 from teff.stream import StreamEvent
@@ -55,6 +56,12 @@ class SubFlow(Node):
             sub_state = copy.deepcopy(state)
         input_snapshot = copy.deepcopy(sub_state)
 
+        checkpointer = getattr(ctx, "checkpointer", None)
+        checkpoint_id = getattr(ctx, "checkpoint_id", None)
+        nested_checkpoint_id = None
+        if checkpointer is not None and checkpoint_id:
+            nested_checkpoint_id = f"{checkpoint_id}:sub:{ctx.node_id or 'subflow'}"
+
         run_kwargs: dict = dict(
             tools=list(ctx.tools.values()),
             reducers=getattr(ctx, "reducers", None),
@@ -66,9 +73,21 @@ class SubFlow(Node):
             default_provider=getattr(ctx, "default_provider", None),
             default_model=getattr(ctx, "default_model", None),
             on_llm_payload=getattr(ctx, "on_llm_payload", None),
+            checkpointer=checkpointer,
+            checkpoint_id=nested_checkpoint_id,
+            owner=getattr(ctx, "owner", None),
+            resume=getattr(ctx, "resume", None),
         )
 
-        result = await self._graph.run(sub_state, **run_kwargs)
+        try:
+            result = await self._graph.run(sub_state, **run_kwargs)
+        except GraphInterrupt as exc:
+            exc.node_id = ctx.node_id
+            exc.nested_checkpoint_id = nested_checkpoint_id
+            raise
+
+        if nested_checkpoint_id is not None and checkpointer is not None:
+            await checkpointer.delete(nested_checkpoint_id, owner=ctx.owner)
 
         out = {}
         if self._output_map:
@@ -141,12 +160,18 @@ class SubFlow(Node):
         The inner run emits its own ``run_start``/``run_end`` lifecycle
         events; those belong to the top-level stream, so they are
         stripped while node/token/llm/edge events stream through.
+        ``interrupt``/``interrupt_resume`` are also stripped: ``SubFlow``
+        re-raises :class:`~teff.node.interrupt.GraphInterrupt` to the
+        enclosing run, which emits those events itself (with the sub-flow's
+        node id), so emitting them here too would duplicate them.
         """
         if emit is None:
             return None
 
+        _STRIPPED = ("run_start", "run_end", "interrupt", "interrupt_resume")
+
         async def forward(event: StreamEvent) -> None:
-            if event.type in ("run_start", "run_end"):
+            if event.type in _STRIPPED:
                 return
             await emit(event)
 

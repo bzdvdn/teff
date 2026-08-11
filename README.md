@@ -291,7 +291,7 @@ steps:
         output_key: critic_note,
       }
 
-  - append_assistant: {output_key: poem, messages_key: messages}
+  - append_assistant: { output_key: poem, messages_key: messages }
 
   - interrupt:
       id: approval

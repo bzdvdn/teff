@@ -36,6 +36,21 @@ flow.step(LLM(model="gpt-4"))
 flow.step(custom_node)
 ```
 
+### Conditional steps
+
+`step(..., when=...)` guards a node behind a predicate on the state: it only runs
+when the callable (or string condition) matches. Follow it with `default(node)`:
+
+```python
+flow.step(decider)
+flow.step(handle_yes, when=lambda s: s["ok"])
+flow.default(handle_no)   # runs when the guard fails
+```
+
+The guarded step's edge wins on a match, so `default()` fires only when the
+guard misses. `default()` requires a preceding guarded step to be useful;
+for branch fallbacks use `branch(..., default=node)` instead.
+
 ### `llm(...)` and `transform(...)`
 
 Shorthands for the two most common node classes. Accept either a pre-built
@@ -115,8 +130,9 @@ flow.branch(
 
 - Each `Case(value)` produces an edge `key=value`; a `Case` can hold several
   chained nodes via repeated `.add(node)`.
-- `default=` (or the `default(node)` method) adds an edge
-  `key!=<all case values>`.
+- `default=` adds an edge `key!=<all case values>`; it is the only way to
+  add a branch fallback. The separate `default(node)` method is reserved
+  for guarded steps (see [`step(..., when=...)`](#conditional-steps) below).
 
 ### `converge(node)`
 
@@ -295,8 +311,8 @@ The result validates with `teff validate` and round-trips through
 | `context_builder(...)` / `append_assistant(...)` | turn routing pair | [Nodes](../reference/nodes.md) |
 | `supervisor(...)` | supervisor decider | [Supervisors](supervisors.md) |
 | `add_flow(flow)` | nested `SubFlow` node | — |
-| `branch(key, *cases)` | conditional edges | [State](state.md) |
-| `default(node)` / `converge(node)` | fallback / rejoin | — |
+| `branch(key, *cases, default=...)` | conditional edges | [State](state.md) |
+| `default(node)` / `converge(node)` | guard fallback / rejoin | — |
 | `loop(key, until, ...)` | repeat-until cycle | [Durable](durable.md) |
 | `route(key, **agents)` | supervisor loop | [Supervisors](supervisors.md) |
 | `return Command(goto=...)` | dynamic per-node routing | [Command routing](commands.md) |

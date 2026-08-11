@@ -33,6 +33,24 @@
   (`presets`) split apart; everything re-exports from `teff.tool`
   (`McpPreset`, `McpTool`, `McpToolGroup`, `MCP_PRESETS`, `mcp_tools`,
   `open_tools`).
+- **Async checkpointers** — `save`/`delete` no longer block the event loop:
+  sync file I/O moved to `asyncio.to_thread` across the file, SQLite, and
+  Postgres backends, and through checkpoint history.
+- **`branch(..., default=...)` is the one way to add a branch fallback** —
+  it emits the `key!=<case values>` edge. The `default(node)` method is
+  reserved for guarded steps and now raises `ValueError` unless it follows
+  a `step(..., when=...)`; the transient `_last_branch_key` /
+  `_last_branch_values` / `_branch_point` builder state is gone.
+- **Resumable subflow interrupts** — `SubFlow` forwards the parent's
+  `checkpointer`/`checkpoint_id`/`owner`/`resume` into nested graph runs and
+  checkpoints under `{parent}:sub:{node_id}`. An `interrupt` inside a
+  subflow now stays resumable in place on `graph.run(resume=...)`, and an
+  error retry continues from the failing node instead of restarting the
+  subflow; completed subflows drop their nested checkpoint via `delete`.
+- **Interrupt/save race fix** — the engine saves the interrupt checkpoint
+  *before* emitting the `interrupt` event, so cancelling a paused run can no
+  longer observe a stale `pending()` without the interrupt. The
+  `interrupt`→`checkpoint` observer ordering is unchanged.
 
 ## 0.2.0 — flow.yaml authoring layer
 

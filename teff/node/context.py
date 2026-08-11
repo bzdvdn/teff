@@ -159,6 +159,8 @@ class ExecContext:
         checkpoint_id: Run key of the enclosing run, used to namespace
             nested run checkpoints.
         owner: Owner scope of the enclosing run.
+        resume: Resume dict of the enclosing run, forwarded to nested runs
+            so a sub-flow interrupted by human input resumes in place.
         on_llm_payload: Optional async callback receiving the raw request /
             response of every LLM call: ``(provider, model, messages,
             completion, usage, latency_ms, cached)``.  Observability layers
@@ -184,6 +186,7 @@ class ExecContext:
         checkpointer: Any = None,
         checkpoint_id: str | None = None,
         owner: str | None = None,
+        resume: dict | None = None,
         on_llm_payload: "Callable[..., Awaitable[None]] | None" = None,
     ):
         self.state = state
@@ -201,6 +204,7 @@ class ExecContext:
         self.checkpointer = checkpointer
         self.checkpoint_id = checkpoint_id
         self.owner = owner
+        self.resume = resume
         self.on_llm_payload = on_llm_payload
 
     def tool(self, name: str) -> Tool:

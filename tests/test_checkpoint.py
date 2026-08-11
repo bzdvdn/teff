@@ -1,3 +1,4 @@
+import contextlib
 from typing import TypedDict
 
 import pytest
@@ -808,7 +809,19 @@ def _mock_pg(monkeypatch, checkpointer_cls, dsn="postgresql://mock/mock"):
     async def _connect(dsn):
         return _FakePGConn(state)
 
+    class _FakePool:
+        @contextlib.asynccontextmanager
+        async def acquire(self):
+            yield _FakePGConn(state)
+
+        async def close(self) -> None:
+            pass
+
+    async def _create_pool(dsn, **kwargs):
+        return _FakePool()
+
     monkeypatch.setattr(asyncpg, "connect", _connect)
+    monkeypatch.setattr(asyncpg, "create_pool", _create_pool)
     return checkpointer_cls(dsn)
 
 

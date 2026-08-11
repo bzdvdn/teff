@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -51,36 +52,52 @@ class JSONFileCheckpointer(Checkpointer):
     ) -> None:
         target = self._path(checkpoint_id, owner)
         tmp = target.with_suffix(f"{self._suffix}.tmp")
-        tmp.write_text(
-            json.dumps(checkpoint_to_dict(checkpoint), ensure_ascii=False),
-            encoding="utf-8",
-        )
-        os.replace(tmp, target)
+
+        def _save() -> None:
+            tmp.write_text(
+                json.dumps(checkpoint_to_dict(checkpoint), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            os.replace(tmp, target)
+
+        await asyncio.to_thread(_save)
 
     async def load(
         self, checkpoint_id: str, *, owner: str = DEFAULT_OWNER
     ) -> Checkpoint | None:
         path = self._path(checkpoint_id, owner)
-        if not path.exists():
-            return None
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return checkpoint_from_dict(data)
+
+        def _load() -> Checkpoint | None:
+            if not path.exists():
+                return None
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return checkpoint_from_dict(data)
+
+        return await asyncio.to_thread(_load)
 
     async def delete(self, checkpoint_id: str, *, owner: str = DEFAULT_OWNER) -> None:
         path = self._path(checkpoint_id, owner)
-        if path.exists():
-            path.unlink()
+
+        def _delete() -> None:
+            if path.exists():
+                path.unlink()
+
+        await asyncio.to_thread(_delete)
 
     async def list(self, owner: str = DEFAULT_OWNER) -> list[str]:
         """Return all checkpoint IDs persisted for *owner*."""
         base = self._directory / self._safe_owner(owner)
-        if not base.exists():
-            return []
-        return sorted(
-            p.name[: -len(self._suffix)]
-            for p in base.glob(f"*{self._suffix}")
-            if not p.name.endswith(f"{self._suffix}.tmp")
-        )
+
+        def _list() -> list[str]:
+            if not base.exists():
+                return []
+            return sorted(
+                p.name[: -len(self._suffix)]
+                for p in base.glob(f"*{self._suffix}")
+                if not p.name.endswith(f"{self._suffix}.tmp")
+            )
+
+        return await asyncio.to_thread(_list)
 
     def _owners(self) -> List[str]:
         if not self._directory.exists():
@@ -110,20 +127,24 @@ class JSONFileCheckpointer(Checkpointer):
         """Delete stale checkpoints; returns how many were removed."""
         if max_age is None and keep_last is None:
             return 0
-        removed = 0
-        owners = [owner] if owner is not None else self._owners()
-        now = time.time()
-        for own in owners:
-            pairs = self._owner_checkpoints(own)
-            to_delete: List[str] = []
-            for idx, (cid, mtime) in enumerate(pairs):
-                if max_age is not None and now - mtime > max_age:
-                    to_delete.append(cid)
-                elif keep_last is not None and idx >= keep_last:
-                    to_delete.append(cid)
-            for cid in to_delete:
-                path = self._path(cid, own)
-                if path.exists():
-                    path.unlink()
-                    removed += 1
-        return removed
+
+        def _cleanup() -> int:
+            removed = 0
+            owners = [owner] if owner is not None else self._owners()
+            now = time.time()
+            for own in owners:
+                pairs = self._owner_checkpoints(own)
+                to_delete: List[str] = []
+                for idx, (cid, mtime) in enumerate(pairs):
+                    if max_age is not None and now - mtime > max_age:
+                        to_delete.append(cid)
+                    elif keep_last is not None and idx >= keep_last:
+                        to_delete.append(cid)
+                for cid in to_delete:
+                    path = self._path(cid, own)
+                    if path.exists():
+                        path.unlink()
+                        removed += 1
+            return removed
+
+        return await asyncio.to_thread(_cleanup)

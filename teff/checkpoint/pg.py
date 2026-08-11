@@ -1,6 +1,7 @@
 """PostgreSQL checkpointing — requires ``asyncpg`` (``teff[pg-checkpoint]``)."""
 
 import json
+import time
 
 from teff.checkpoint.base import DEFAULT_OWNER, Checkpoint, Checkpointer
 
@@ -9,39 +10,56 @@ class PGCheckpointer(Checkpointer):
     """Store checkpoints in a PostgreSQL table.
 
     Requires ``asyncpg`` (install via ``teff[pg-checkpoint]``). The
-    table ``checkpoints`` is created lazily on first use.
+    table ``checkpoints`` is created lazily on first use.  Connections are
+    drawn from a lazily-created async connection pool, so checkpoint saves
+    reuse warm connections instead of paying the handshake per operation.
 
     Args:
         dsn: PostgreSQL connection string.
         table: Table name (default ``"checkpoints"``).
+        pool_size: Maximum pooled connections (default 5).
     """
 
-    def __init__(self, dsn: str, table: str = "checkpoints"):
+    def __init__(self, dsn: str, table: str = "checkpoints", pool_size: int = 5):
         import importlib.util
 
         if importlib.util.find_spec("asyncpg") is None:
             raise ImportError("install asyncpg for PGCheckpointer")
         self._dsn = dsn
         self._table = table
+        self._pool_size = max(1, pool_size)
+        self._pool = None
 
-    async def _connect(self):
-        import asyncpg
+    async def _ensure_pool(self):
+        """Lazily create the connection pool and the table."""
+        if self._pool is None:
+            import asyncpg
 
-        conn = await asyncpg.connect(self._dsn)
-        await conn.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {self._table} (
-                owner TEXT NOT NULL DEFAULT 'default',
-                checkpoint_id TEXT NOT NULL,
-                state JSONB NOT NULL,
-                next_node_id TEXT,
-                iteration INTEGER NOT NULL,
-                updated_at DOUBLE PRECISION,
-                PRIMARY KEY (owner, checkpoint_id)
+            pool = await asyncpg.create_pool(
+                self._dsn, min_size=1, max_size=self._pool_size
             )
-            """
-        )
-        return conn
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {self._table} (
+                        owner TEXT NOT NULL DEFAULT 'default',
+                        checkpoint_id TEXT NOT NULL,
+                        state JSONB NOT NULL,
+                        next_node_id TEXT,
+                        iteration INTEGER NOT NULL,
+                        updated_at DOUBLE PRECISION,
+                        PRIMARY KEY (owner, checkpoint_id)
+                    )
+                    """
+                )
+            self._pool = pool
+        return self._pool
+
+    async def close(self) -> None:
+        """Close the connection pool (idempotent)."""
+        pool, self._pool = self._pool, None
+        if pool is not None:
+            await pool.close()
 
     async def save(
         self,
@@ -50,10 +68,8 @@ class PGCheckpointer(Checkpointer):
         *,
         owner: str = DEFAULT_OWNER,
     ) -> None:
-        import time
-
-        conn = await self._connect()
-        try:
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
             await conn.execute(
                 f"""
                 INSERT INTO {self._table} (owner, checkpoint_id, state, next_node_id, iteration, updated_at)
@@ -71,14 +87,12 @@ class PGCheckpointer(Checkpointer):
                 checkpoint.iteration,
                 time.time(),
             )
-        finally:
-            await conn.close()
 
     async def load(
         self, checkpoint_id: str, *, owner: str = DEFAULT_OWNER
     ) -> Checkpoint | None:
-        conn = await self._connect()
-        try:
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
             row = await conn.fetchrow(
                 f"SELECT state, next_node_id, iteration FROM {self._table} "
                 f"WHERE owner = $1 AND checkpoint_id = $2",
@@ -92,32 +106,26 @@ class PGCheckpointer(Checkpointer):
                 next_node_id=row["next_node_id"],
                 iteration=row["iteration"],
             )
-        finally:
-            await conn.close()
 
     async def delete(self, checkpoint_id: str, *, owner: str = DEFAULT_OWNER) -> None:
-        conn = await self._connect()
-        try:
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
             await conn.execute(
                 f"DELETE FROM {self._table} WHERE owner = $1 AND checkpoint_id = $2",
                 owner,
                 checkpoint_id,
             )
-        finally:
-            await conn.close()
 
     async def list(self, owner: str = DEFAULT_OWNER) -> list[str]:
         """Return all checkpoint IDs persisted for *owner*."""
-        conn = await self._connect()
-        try:
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
             rows = await conn.fetch(
                 f"SELECT checkpoint_id FROM {self._table} "
                 f"WHERE owner = $1 ORDER BY checkpoint_id",
                 owner,
             )
             return [r["checkpoint_id"] for r in rows]
-        finally:
-            await conn.close()
 
     async def cleanup(
         self,
@@ -127,14 +135,12 @@ class PGCheckpointer(Checkpointer):
         keep_last: int | None = None,
     ) -> int:
         """Delete stale checkpoints; returns how many were removed."""
-        import time
-
         if max_age is None and keep_last is None:
             return 0
         removed = 0
         now = time.time()
-        conn = await self._connect()
-        try:
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
             if owner is not None:
                 owners = [owner]
             else:
@@ -165,6 +171,4 @@ class PGCheckpointer(Checkpointer):
                             row["checkpoint_id"],
                         )
                         removed += 1
-        finally:
-            await conn.close()
         return removed
