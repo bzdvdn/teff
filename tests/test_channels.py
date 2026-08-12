@@ -439,7 +439,9 @@ class TestTelegramChannel:
         )
         assert any(m == "sendMessage" for m, _ in sent)
 
-    async def test_mention_aware_answers_reply_to_bot(self, workflow, mock_llm, monkeypatch):
+    async def test_mention_aware_answers_reply_to_bot(
+        self, workflow, mock_llm, monkeypatch
+    ):
         mock_llm.content = "thanks!"
         sent = []
 
@@ -466,7 +468,9 @@ class TestTelegramChannel:
         )
         assert sent[0][0] == "sendMessage"
 
-    async def test_mention_aware_answers_private_chat(self, workflow, mock_llm, monkeypatch):
+    async def test_mention_aware_answers_private_chat(
+        self, workflow, mock_llm, monkeypatch
+    ):
         mock_llm.content = "hi!"
         sent = []
 
