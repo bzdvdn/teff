@@ -129,7 +129,8 @@ The loop above survives any number of interrupts (e.g. a "rework" branch that
 re-asks). `initial_state` seeds a fresh session, `transient_keys` are cleared
 at the start of every turn, and `messages_key` names the message list.
 `graph.stream(message=...)` is the streaming equivalent — a pause surfaces an
-`interrupt` event (with `key`/`prompt` in its `data`) where the stream ends.
+`interrupt` event (with `key` and the question in `question`, mirrored under
+`prompt` for compatibility) where the stream ends.
 
 ### Validating the answer
 

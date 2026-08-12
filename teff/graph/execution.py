@@ -363,7 +363,11 @@ async def _execute_impl(
                         StreamEvent(
                             "interrupt",
                             node_id=current_id,
-                            data={"key": exc.key, "prompt": exc.prompt},
+                            data={
+                                "key": exc.key,
+                                "prompt": exc.prompt,
+                                "question": exc.prompt,
+                            },
                         )
                     )
                     if checkpointer is not None:

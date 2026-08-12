@@ -928,9 +928,20 @@ def test_api_chat_and_stream(monkeypatch, tmp_path):
     )
     assert stream.status_code == 200
     assert "event: chat_id" in stream.text
-    assert "event: run_start" in stream.text
     assert "event: waiting" in stream.text
-    assert "event: run_end" not in stream.text
+    assert "event: message" not in stream.text  # nothing to say while paused
+    assert "event: run_start" not in stream.text  # internal events are hidden
+
+    # ?raw=1 keeps the underlying framework events for debugging
+    mock.coordinator_steps = _HAPPY_PATH[:]
+    raw = client.post(
+        "/api/chat/stream?raw=1",
+        json={"message": "Помоги спланировать ремонт ванной 5 м²."},
+    )
+    assert raw.status_code == 200
+    assert "event: run_start" in raw.text
+    assert "event: waiting" in raw.text
+    assert "event: message" not in raw.text
 
     saved = client.get(f"/api/runs/{chat_id}")
     assert saved.status_code == 200

@@ -112,9 +112,9 @@ class Assistant:
         The streaming equivalent of :meth:`run`.  Relays the underlying
         ``graph.stream(message=...)`` events verbatim; a paused session
         auto-resumes with the message, and a re-work pause surfaces an
-        ``interrupt`` event (with ``key``/``prompt`` in its ``data``) where
-        the stream ends — call this again with the operator's answer to
-        continue.
+        ``interrupt`` event (with ``key`` and the question in ``question``,
+        mirrored under ``prompt`` for compatibility) where the stream ends —
+        call this again with the operator's answer to continue.
         """
         async for event in self.graph.stream(
             state={},

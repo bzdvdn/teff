@@ -82,3 +82,13 @@ uv run python examples/applications/repair-ai-chat/main.py
 The end-to-end wiring test (`tests/test_applications_repair_ai_chat.py`)
 runs the same graph against a mocked LLM transport, so it needs no network:
 `uv run pytest tests/test_applications_repair_ai_chat.py`
+
+While the server is up, `check_stream.py` probes a turn of the chat-style
+SSE stream and validates its event contract:
+
+```
+uv run python examples/applications/repair-ai-chat/check_stream.py
+uv run python examples/applications/repair-ai-chat/check_stream.py \
+    --message да --session <id>            # answer an ask_human pause
+uv run python examples/applications/repair-ai-chat/check_stream.py --raw
+```

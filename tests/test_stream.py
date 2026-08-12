@@ -362,7 +362,11 @@ class TestStreamInterrupt:
         assert run_end.data["status"] == "interrupted"
         assert run_end.data["total_ms"] >= 0
         interrupt = next(e for e in first if e.type == "interrupt")
-        assert interrupt.data == {"key": "approved", "prompt": "ok?"}
+        assert interrupt.data == {
+            "key": "approved",
+            "prompt": "ok?",
+            "question": "ok?",
+        }
         assert interrupt.node_id == "ask"
         assert types[-1] == "run_end"
 

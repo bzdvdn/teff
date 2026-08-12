@@ -476,8 +476,9 @@ class Graph:
         With *message* the stream is one durable conversation turn (see
         :meth:`run`): a paused session auto-resumes with the operator's
         answer, and a re-work pause surfaces an ``interrupt`` event (with
-        ``key``/``prompt`` in its ``data``) where the stream ends — call
-        this again with the operator's answer to continue.
+        ``key`` and the question in ``question``, mirrored under ``prompt``
+        for compatibility) where the stream ends — call this again with the
+        operator's answer to continue.
 
         Parameters mirror :meth:`run` (including ``owner``).
         """

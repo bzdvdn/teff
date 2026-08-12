@@ -6,19 +6,27 @@ to a user id (``X-User-Id`` header) and durable across requests and process
 restarts.
 
 Endpoints:
-    POST   /api/chat         single-shot reply (runs the flow once)
-    POST   /api/chat/stream  SSE event stream over ``graph.stream()``
+    POST   /api/chat/stream  chat-style SSE stream (see below)
+
+Stream events (chat-like by default; append ``?raw=1`` for the underlying
+framework events):
+
+* ``chat_id`` — the durable session id.
+* ``status`` — the coordinator picked a tool (e.g. ``Составляю смету…``).
+* ``content`` — streamed tokens when an agent streams them.
+* ``waiting`` — the workflow paused asking the operator a question; the
+  stream ends here, resume by posting the answer to the same session.  The
+  payload carries the question under ``question``.
+* ``message`` — the full assistant reply (``{"session_id", "reply",
+  "run_id", "waiting"}``), a client can render it without concatenating
+  ``content`` events.
 
 Human-in-the-loop: pause handling lives in the framework's
 :class:`~teff.assistant.Assistant`.  Its ``turn``/``stream`` methods detect a
 paused interrupt from the durable checkpoint and resume the run with the next
 message — so this endpoint never sees a ``GraphInterrupt`` or a ``pending``
-map.  It surfaces ``waiting``/``prompt`` to the client and the operator's
-answer resumes the run in the same session.
-
-The stream ends with a ``message`` event carrying the full assistant reply
-(``{"session_id", "reply"}``), so clients never have to concatenate ``token``
-events themselves — tool-using agents may not stream tokens at all.
+map.  It surfaces ``waiting`` and the question to the client and the
+operator's answer resumes the run in the same session.
 """
 
 from __future__ import annotations
@@ -113,6 +121,18 @@ async def chat(
     }
 
 
+#: Human-friendly labels for the coordinator's tools, shown as ``status``
+#: events so the stream reads like a working assistant rather than a graph.
+_TOOL_LABELS = {
+    "extract_project_info": "Распознаю параметры проекта…",
+    "propose_plan": "Предлагаю план работ…",
+    "select_materials": "Подбираю материалы…",
+    "prepare_estimate": "Составляю смету…",
+    "run_qa_check": "Проверяю проект…",
+    "ask_human": "Жду подтверждения…",
+}
+
+
 @router.post("/stream")
 async def chat_stream(
     req: ChatRequest,
@@ -120,6 +140,7 @@ async def chat_stream(
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
 ) -> EventSourceResponse:
     assistant, owner, session_id = _session(req, request, x_user_id)
+    raw = request.query_params.get("raw") == "1"
 
     async def events():
         yield {"event": "chat_id", "data": json.dumps({"session_id": session_id})}
@@ -138,18 +159,43 @@ async def chat_stream(
                         "data": json.dumps(
                             {
                                 "session_id": session_id,
-                                "prompt": event.data.get("prompt", ""),
+                                "question": event.data.get("question")
+                                or event.data.get("prompt", ""),
                             }
                         ),
                     }
                     return
-                data = {"session_id": session_id}
-                if event.node_id is not None:
-                    data["node_id"] = event.node_id
-                if event.node_type is not None:
-                    data["node_type"] = event.node_type
-                data.update(event.data)
-                yield {"event": event.type, "data": json.dumps(data)}
+                if raw:
+                    data = {"session_id": session_id}
+                    if event.node_id is not None:
+                        data["node_id"] = event.node_id
+                    if event.node_type is not None:
+                        data["node_type"] = event.node_type
+                    data.update(event.data)
+                    yield {"event": event.type, "data": json.dumps(data)}
+                elif event.type == "token":
+                    yield {
+                        "event": "content",
+                        "data": json.dumps(
+                            {
+                                "session_id": session_id,
+                                "typing": True,
+                                "content": event.data.get("token", ""),
+                            }
+                        ),
+                    }
+                elif event.type == "tool_call":
+                    name = event.data.get("name", "")
+                    yield {
+                        "event": "status",
+                        "data": json.dumps(
+                            {
+                                "session_id": session_id,
+                                "message": _TOOL_LABELS.get(name)
+                                or f"Выполняю {name}…",
+                            }
+                        ),
+                    }
         finally:
             run_id = _finish(observer)
         reply = await assistant.last_reply(session_id, owner=owner)

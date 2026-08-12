@@ -101,6 +101,7 @@ async def chat(
         "run_id": run_id,
         "waiting": result.waiting,
         "prompt": result.prompt if result.waiting else None,
+        "question": result.prompt if result.waiting else None,
     }
 
 

@@ -11,6 +11,20 @@
   "any @-entity" when the identity cannot be fetched, and the flag is wired
   through `channels.telegram.reply_when` for `teff bot`
   (`teff/channels/telegram.py`, `docs/guide/channels.md`).
+- **`question` on interrupt events** — the `interrupt` `StreamEvent` (and
+  so every channel that relays it) now carries the operator question as
+  `question` alongside the existing `prompt` (same value), so chat clients
+  read a familiar key instead of the LLM-flavoured `prompt` (`prompt` stays
+  for compatibility; full rename deferred).  The `repair-ai-chat` example
+  and the FastAPI scaffold surface it as `waiting.question` / a `question`
+  field in the `/api/chat` reply, and the example's `check_stream.py`
+  validates `question` in the chat-stream contract.
+- **Chat-style stream in `repair-ai-chat`** — `POST /api/chat/stream` now
+  emits a clean chat conversation (`chat_id`, `status` while the coordinator
+  runs a tool, `content` tokens, `waiting`, `message`) instead of the raw
+  framework event dump; internal events remain available via `?raw=1`.
+  The coordinator prompt now mandates passing a Russian `question` to
+  `ask_human`, so pauses ask the operator in Russian.
 
 ## 0.3.0 — MCP tools & durable execution
 
