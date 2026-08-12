@@ -386,3 +386,114 @@ class TestTelegramChannel:
         bot = self._bot(build_assistant(str(workflow)))
         await bot.handle_update({"update_id": 1, "message": {"chat": {"id": 1}}})
         assert sent == []
+
+    async def test_mention_aware_skips_unaddressed_group(self, workflow, monkeypatch):
+        sent = []
+
+        async def fake_api(self, method, **params):
+            sent.append((method, params))
+            if method == "getMe":
+                return {"username": "my_bot"}
+            return {}
+
+        monkeypatch.setattr(TelegramChannel, "_api", fake_api)
+        bot = TelegramChannel(
+            build_assistant(str(workflow)), token="test:token", reply_when="mentioned"
+        )
+        await bot.handle_update(
+            {
+                "update_id": 1,
+                "message": {
+                    "chat": {"id": 10, "type": "group"},
+                    "from": {"id": 5},
+                    "text": "what does anyone think",
+                },
+            }
+        )
+        assert all(m != "sendMessage" for m, _ in sent)
+
+    async def test_mention_aware_answers_mention(self, workflow, mock_llm, monkeypatch):
+        mock_llm.content = "hi!"
+        sent = []
+
+        async def fake_api(self, method, **params):
+            sent.append((method, params))
+            if method == "getMe":
+                return {"username": "my_bot"}
+            return {}
+
+        monkeypatch.setattr(TelegramChannel, "_api", fake_api)
+        bot = TelegramChannel(
+            build_assistant(str(workflow)), token="test:token", reply_when="mentioned"
+        )
+        await bot.handle_update(
+            {
+                "update_id": 1,
+                "message": {
+                    "chat": {"id": 10, "type": "group"},
+                    "from": {"id": 5},
+                    "text": "hey @my_bot",
+                    "entities": [{"type": "mention", "offset": 4, "length": 7}],
+                },
+            }
+        )
+        assert any(m == "sendMessage" for m, _ in sent)
+
+    async def test_mention_aware_answers_reply_to_bot(self, workflow, mock_llm, monkeypatch):
+        mock_llm.content = "thanks!"
+        sent = []
+
+        async def fake_api(self, method, **params):
+            sent.append((method, params))
+            if method == "getMe":
+                return {"username": "my_bot"}
+            return {}
+
+        monkeypatch.setattr(TelegramChannel, "_api", fake_api)
+        bot = TelegramChannel(
+            build_assistant(str(workflow)), token="test:token", reply_when="mentioned"
+        )
+        await bot.handle_update(
+            {
+                "update_id": 1,
+                "message": {
+                    "chat": {"id": 10, "type": "supergroup"},
+                    "from": {"id": 5},
+                    "text": "thanks",
+                    "reply_to_message": {"from": {"is_bot": True}},
+                },
+            }
+        )
+        assert sent[0][0] == "sendMessage"
+
+    async def test_mention_aware_answers_private_chat(self, workflow, mock_llm, monkeypatch):
+        mock_llm.content = "hi!"
+        sent = []
+
+        async def fake_api(self, method, **params):
+            sent.append((method, params))
+            if method == "getMe":
+                return {"username": "my_bot"}
+            return {}
+
+        monkeypatch.setattr(TelegramChannel, "_api", fake_api)
+        bot = TelegramChannel(
+            build_assistant(str(workflow)), token="test:token", reply_when="mentioned"
+        )
+        await bot.handle_update(
+            {
+                "update_id": 1,
+                "message": {
+                    "chat": {"id": 11, "type": "private"},
+                    "from": {"id": 6},
+                    "text": "hi",
+                },
+            }
+        )
+        assert sent[0][0] == "sendMessage"
+
+    async def test_mention_aware_defaults_to_all(self, workflow):
+        bot = self._bot(build_assistant(str(workflow)))
+        assert bot.reply_when == "all"
+        with pytest.raises(ValueError):
+            TelegramChannel(assistant=bot.assistant, token="t", reply_when="nope")

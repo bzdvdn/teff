@@ -910,7 +910,9 @@ def bot(
 
     cfg = load_channels(file).get("telegram") or {}
     effective_mode = mode if mode != "polling" else cfg.get("mode", "polling")
-    bot = TelegramChannel(assistant, token)
+    bot = TelegramChannel(
+        assistant, token, reply_when=cfg.get("reply_when", "all")
+    )
 
     if effective_mode == "webhook":
         url = cfg.get("url")

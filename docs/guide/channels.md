@@ -120,6 +120,22 @@ Each Telegram chat maps to a session; the owner is the message sender's
 user id (`from.id`, falling back to the chat id), so two people in the same
 group never share a conversation.
 
+Group chats: by default the bot replies to every group message. Set
+`reply_when: mentioned` to answer only messages addressed to it — a reply
+on the bot's own message or an `@bot_username` mention — so each user sees
+only responses to their own message:
+
+```yaml
+channels:
+  telegram:
+    token_env: TELEGRAM_BOT_TOKEN
+    mode: polling
+    reply_when: mentioned   # all (default) | mentioned
+```
+
+The bot username is resolved once via `getMe` and cached; if it cannot be
+resolved, any `@mention` in a group message counts as addressed.
+
 ## Generic webhooks
 
 ```python

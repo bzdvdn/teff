@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Telegram group-chat addressing** — `TelegramChannel` gains
+  `reply_when: "all" (default) | "mentioned"`, so a bot in a group chat can
+  answer only messages addressed to it — a reply on the bot's own message
+  or an `@username` mention — instead of every group message, so each user
+  sees only responses aimed at them.  Private chats are always answered.
+  The bot username is resolved once via `getMe` and cached, degrading to
+  "any @-entity" when the identity cannot be fetched, and the flag is wired
+  through `channels.telegram.reply_when` for `teff bot`
+  (`teff/channels/telegram.py`, `docs/guide/channels.md`).
+
 ## 0.3.0 — MCP tools & durable execution
 
 This release wires agents to **Model Context Protocol** servers (`type: mcp`
