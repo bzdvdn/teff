@@ -59,6 +59,7 @@ class AgentTool(Tool):
     writes: tuple[str, ...] = ()
     user_template: str = ""
     formatters: "dict[str, Callable[[dict], str]] | None" = None
+    temperature: float | None = 0.0
 
     def __init__(
         self,
@@ -71,6 +72,7 @@ class AgentTool(Tool):
         writes: tuple[str, ...] | None = None,
         user_template: str | None = None,
         formatters: "dict[str, Callable[[dict], str]] | None" = None,
+        temperature: float | None = None,
     ):
         super().__init__()
         self._model = model
@@ -84,6 +86,9 @@ class AgentTool(Tool):
         )
         self._formatters = dict(
             formatters if formatters is not None else (self.formatters or {})
+        )
+        self._temperature = (
+            temperature if temperature is not None else self.temperature
         )
 
     # -- subclass extension points ------------------------------------------
@@ -173,6 +178,7 @@ class AgentTool(Tool):
                 "provider": self._provider,
                 "max_tool_rounds": self._max_rounds,
                 "parse_text_tool_calls": True,
+                "temperature": self._temperature,
             },
             default_provider=self._provider,
             default_model=self._model,

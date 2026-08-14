@@ -75,7 +75,58 @@ repair-ai-chat/
 Requires Ollama running locally:
 
 ```
-ollama pull llama3.1:8b
+ollama pull qwen2.5:7b
+uv run python examples/applications/repair-ai-chat/main.py
+```
+
+Open `http://localhost:8000` for the build-free web chat UI, and
+`http://localhost:8000/obs/ui` for the live trace dashboard.
+
+### Live demo with Docker Compose
+
+The default `docker-compose.yml` connects the app to Ollama **on your host
+machine** (via `host.docker.internal`):
+
+```
+ollama pull qwen2.5:7b && ollama pull nomic-embed-text
+docker compose up --build
+```
+
+- `http://localhost:8000` — the chat web UI
+- `http://localhost:8000/obs/ui` — the trace dashboard
+
+If your Ollama only listens on `127.0.0.1`, start it with
+`OLLAMA_HOST=0.0.0.0 ollama serve` first so the container can reach it.
+Long-running sessions persist to the `appdata` volume.
+
+> **No host Ollama? Use the all-in-one bundle.** `compose.ollama.yml` adds a
+> containerised Ollama (app + model together — needs several GB of RAM, so
+> it is for local tasting, not a small VPS):
+>
+> ```
+> docker compose -f docker-compose.yml -f compose.ollama.yml up --build
+> ```
+
+### Point it at any OpenAI-compatible endpoint
+
+`TEFF_PROVIDER_BASE_URL` works for any provider, not just Ollama.  This is
+the recipe for a **hostable, RAM-free demo** — run the app image and set the
+URL to a hosted API that already serves an 8B model (Groq, OpenRouter,
+Together, …):
+
+```
+docker run --rm -p 8000:8000 \
+  -e TEFF_PROVIDER=openai_compatible \
+  -e TEFF_PROVIDER_BASE_URL=https://api.groq.com/openai/v1 \
+  -e TEFF_API_KEY=... \
+  -v teff-data:/data \
+  repair-ai-chat
+```
+
+or, locally against your own Ollama:
+
+```
+TEFF_PROVIDER=ollama TEFF_PROVIDER_BASE_URL=http://localhost:11434 \
 uv run python examples/applications/repair-ai-chat/main.py
 ```
 
@@ -92,3 +143,9 @@ uv run python examples/applications/repair-ai-chat/check_stream.py \
     --message да --session <id>            # answer an ask_human pause
 uv run python examples/applications/repair-ai-chat/check_stream.py --raw
 ```
+
+The stream is `chat_id` → `(status | content)*` → a single terminal
+`message`.  When the run pauses to ask the operator something, the terminal
+`message` carries the question in `reply` and `waiting: true`; otherwise it
+carries the final answer and `waiting: false`.  Posting the answer to the
+same `session_id` resumes the paused run in place.

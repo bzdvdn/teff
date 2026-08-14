@@ -1,0 +1,36 @@
+# Live demo for repair-ai-chat — app connected to a HOST machine's Ollama.
+#
+#     docker compose up --build
+#
+# From inside a container, `localhost` is the container itself, so the app
+# reaches your host Ollama via the special address `host.docker.internal`.
+# `extra_hosts: host-gateway` maps that name to the host on Linux; on Docker
+# Desktop (macOS/Windows) it works out of the box.
+#
+# If your host Ollama only listens on 127.0.0.1, start it with
+# `OLLAMA_HOST=0.0.0.0 ollama serve` so the container can reach it.
+#
+# No bundled Ollama here — to run an all-in-one demo WITHOUT a host Ollama,
+# add the optional bundle: see compose.ollama.yml.
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      TEFF_HOST: 0.0.0.0
+      TEFF_PORT: "8000"
+      TEFF_PROVIDER: ollama
+      TEFF_MODEL: llama3.1:8b
+      TEFF_PROVIDER_BASE_URL: http://host.docker.internal:11434
+      TEFF_CHECKPOINT_DIR: /data/checkpoints
+      TEFF_TRACES_DB: /data/traces.db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - appdata:/data
+    restart: unless-stopped
+
+volumes:
+  appdata:

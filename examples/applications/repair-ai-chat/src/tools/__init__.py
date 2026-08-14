@@ -27,7 +27,7 @@ from src.tools.room import (
     CalculatePerimeter,
     CalculateWallArea,
 )
-from teff.tool.builtin import AskHuman
+from teff.tool.builtin import AskHuman, ReplyToUser
 
 #: Tools the coordinator may call directly.
 COORDINATOR_TOOLS = [
@@ -37,6 +37,7 @@ COORDINATOR_TOOLS = [
     "prepare_estimate",
     "run_qa_check",
     "ask_human",
+    "reply_to_user",
 ]
 
 
@@ -84,6 +85,7 @@ def build_tools(
         ),
         RunQaCheck(model=model, provider=provider),
         AskHuman(),
+        ReplyToUser(),
         *room_tools,
         *material_tools,
         *budget_tools,

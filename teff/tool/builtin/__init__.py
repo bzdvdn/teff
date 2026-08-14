@@ -24,6 +24,7 @@ from teff.tool.builtin.gitlab import (
 )
 from teff.tool.builtin.http import HttpRequestTool
 from teff.tool.builtin.human import AskHuman
+from teff.tool.builtin.reply import ReplyToUser
 from teff.tool.builtin.lock import LockTool
 from teff.tool.builtin.notify import SendEmailTool, SendTelegramTool
 from teff.tool.builtin.pdf import PDFReadTool
@@ -79,6 +80,7 @@ default_tool_registry.register(GitHubPostCommentTool)
 default_tool_registry.register(GitHubApproveTool)
 default_tool_registry.register(MemoryTool)
 default_tool_registry.register(AskHuman)
+default_tool_registry.register(ReplyToUser)
 default_tool_registry.register(RAGIngestTool)
 
 __all__ = [
@@ -123,5 +125,6 @@ __all__ = [
     "GitHubApproveTool",
     "MemoryTool",
     "AskHuman",
+    "ReplyToUser",
     "RAGIngestTool",
 ]

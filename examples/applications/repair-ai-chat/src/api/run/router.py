@@ -5,7 +5,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from src.api.auth.router import require_api_key
-from teff.checkpoint import DEFAULT_OWNER
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
 
@@ -16,7 +15,7 @@ async def get_run(
     request: Request,
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
 ) -> dict:
-    owner = x_user_id or DEFAULT_OWNER
+    owner = x_user_id or chat_id
     saved = await request.app.state.assistant.checkpointer.load(chat_id, owner=owner)
     if saved is None:
         raise HTTPException(status_code=404, detail="run not found")
@@ -35,6 +34,6 @@ async def delete_run(
     request: Request,
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
 ) -> dict:
-    owner = x_user_id or DEFAULT_OWNER
+    owner = x_user_id or chat_id
     await request.app.state.assistant.checkpointer.delete(chat_id, owner=owner)
     return {"chat_id": chat_id, "status": "deleted"}

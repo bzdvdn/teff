@@ -921,15 +921,17 @@ def test_api_chat_and_stream(monkeypatch, tmp_path):
     assert rdata["message"].startswith("План:")
     assert "Смета:" in rdata["message"]
 
-    # a fresh session streams until the first ask_human pause
+    # a fresh session streams until the first ask_human pause, which the
+    # terminal `message` reports via the `waiting` flag
     mock.coordinator_steps = _HAPPY_PATH[:]
     stream = client.post(
         "/api/chat/stream", json={"message": "Помоги спланировать ремонт ванной 5 м²."}
     )
     assert stream.status_code == 200
     assert "event: chat_id" in stream.text
-    assert "event: waiting" in stream.text
-    assert "event: message" not in stream.text  # nothing to say while paused
+    assert "event: message" in stream.text
+    assert '"waiting": true' in stream.text  # paused; reply carries the question
+    assert '"waiting": false' not in stream.text
     assert "event: run_start" not in stream.text  # internal events are hidden
 
     # ?raw=1 keeps the underlying framework events for debugging
@@ -940,8 +942,7 @@ def test_api_chat_and_stream(monkeypatch, tmp_path):
     )
     assert raw.status_code == 200
     assert "event: run_start" in raw.text
-    assert "event: waiting" in raw.text
-    assert "event: message" not in raw.text
+    assert '"waiting": true' in raw.text
 
     saved = client.get(f"/api/runs/{chat_id}")
     assert saved.status_code == 200

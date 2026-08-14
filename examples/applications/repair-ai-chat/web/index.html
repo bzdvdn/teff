@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Teff · Repair AI demo</title>
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --panel2:#1c2330; --border:#2a3444;
+          --fg:#e6edf3; --muted:#8b98a8; --accent:#3fb6ff; --ok:#3ecf72;
+          --warn:#f0b429; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system, Segoe UI, Roboto, sans-serif;
+         background:var(--bg); color:var(--fg); height:100vh; display:flex; }
+  #sidebar { width:250px; background:var(--panel); border-right:1px solid var(--border);
+             padding:18px; display:flex; flex-direction:column; gap:14px; }
+  .logo { font-weight:700; font-size:15px; }
+  .logo span { color:var(--accent); }
+  .muted { color:var(--muted); font-size:12px; }
+  .tag { display:inline-block; background:var(--panel2); border:1px solid var(--border);
+         border-radius:6px; padding:2px 8px; font-size:11px; margin:2px 4px 2px 0; }
+  .trace-link { color:var(--accent); text-decoration:none; font-size:13px; }
+  .trace-link:hover { text-decoration:underline; }
+  input[type=text], textarea { width:100%; background:var(--panel2); color:var(--fg);
+         border:1px solid var(--border); border-radius:8px; padding:10px;
+         font:inherit; outline:none; }
+  input[type=text]:focus, textarea:focus { border-color:var(--accent); }
+  #main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  header { padding:14px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+           display:flex; align-items:center; justify-content:space-between; }
+  header h1 { font-size:15px; margin:0; }
+  #session { font-size:11px; color:var(--muted); color:#6b7886; }
+  #chat { flex:1; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:14px; }
+  .row { max-width:760px; width:100%; margin:0 auto; }
+  .bubble { max-width:72%; padding:11px 14px; border-radius:12px; white-space:pre-wrap; }
+  .user { align-self:flex-end; background:#2b6cb0; border-bottom-right-radius:3px; }
+  .assistant { align-self:flex-start; background:var(--panel2); border:1px solid var(--border);
+               border-bottom-left-radius:3px; }
+  .assistant.streaming { border-color:var(--accent); }
+  .thinking { color:var(--muted); font-style:italic; animation:pulse 1s infinite; }
+  .status { align-self:flex-start; color:var(--muted); font-size:12px; display:flex;
+            gap:8px; align-items:center; }
+  .status .dot { width:7px; height:7px; border-radius:50%; background:var(--warn);
+                 animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  #composer { padding:16px 20px; background:var(--panel); border-top:1px solid var(--border); }
+  #composer form { max-width:760px; margin:0 auto; display:flex; gap:10px; }
+  textarea { flex:1; resize:none; }
+  button { background:var(--accent); color:#04121f; font-weight:600; border:none;
+           border-radius:8px; padding:10px 18px; cursor:pointer; font:inherit; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-secondary { background:var(--panel2); color:var(--fg); border:1px solid var(--border); }
+  .sys { align-self:center; color:var(--muted); font-size:11px; background:var(--panel);
+         border:1px solid var(--border); border-radius:20px; padding:2px 12px; }
+  ::-webkit-scrollbar { width:9px; }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:5px; }
+</style>
+</head>
+<body>
+<aside id="sidebar">
+  <div class="logo">Repair<span>AI</span></div>
+  <div class="muted">A supervisor agent plans a renovation through a team of
+    five agents — RAG materials catalog, estimates, QA review and a human
+    approval gate.</div>
+  <div><span class="tag">durable</span><span class="tag">HITL</span><span class="tag">LLM</span><span class="tag">RAG</span></div>
+  <a class="trace-link" href="/obs/ui" target="_blank">trace dashboard →</a>
+</aside>
+<div id="main">
+  <header>
+    <h1>Bathroom renovation · coordinator</h1>
+    <div id="session">session: …</div>
+  </header>
+  <div id="chat"></div>
+  <div id="composer">
+    <form id="form">
+      <textarea id="input" rows="1" placeholder="Help me plan a bathroom renovation, 5 m²."></textarea>
+      <button id="send" type="submit">Send</button>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  const chat = document.getElementById("chat");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("send");
+  const sessionEl = document.getElementById("session");
+  let sessionId = null;
+  let busy = false;
+  const hints = [
+    "Help me plan a bathroom renovation, 5 m².",
+    "Pick materials for finishing a bathroom.",
+    "Prepare an estimate for a kitchen renovation.",
+  ];
+
+  function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+  function addUser(text) {
+    const r = row();
+    const b = document.createElement("div");
+    b.className = "bubble user";
+    b.textContent = text;
+    r.appendChild(b);
+  }
+  function addAssistant(streaming) {
+    const r = row();
+    const b = document.createElement("div");
+    b.className = "bubble assistant" + (streaming ? " streaming" : "");
+    b.innerHTML = '<span class="thinking">Thinking…</span>';
+    r.appendChild(b);
+    return { row: r, bubble: b };
+  }
+  function clearThinking(holder) {
+    if (!holder) return;
+    const t = holder.bubble.querySelector(".thinking");
+    if (t) t.remove();
+  }
+  function addStatus(text) {
+    const r = row();
+    const s = document.createElement("div");
+    s.className = "status";
+    s.innerHTML = '<span class="dot"></span>' + esc(text);
+    r.appendChild(s);
+    return s;
+  }
+  function row() { const r = document.createElement("div"); r.className = "row"; chat.appendChild(r); return r; }
+  function scrollBottom() { chat.scrollTop = chat.scrollHeight; }
+
+  function setBusy(v) { busy = v; sendBtn.disabled = v; input.disabled = v; }
+
+  function newSession() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) sessionId = crypto.randomUUID().replace(/-/g, "");
+    else sessionId = Math.random().toString(36).slice(2);
+    sessionEl.textContent = "session: " + sessionId;
+    try { localStorage.setItem("teff-session", sessionId); } catch (e) {}
+  }
+
+  function readSession() {
+    try { return localStorage.getItem("teff-session"); } catch (e) { return null; }
+  }
+
+  async function send(message) {
+    if (busy) return;
+    setBusy(true);
+    addUser(message);
+    const holder = addAssistant(true);
+
+    const body = { message, session_id: sessionId, max_iterations: 80 };
+    const res = await fetch("/api/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      if (holder) { holder.bubble.classList.remove("streaming"); holder.bubble.textContent = "Ошибка: " + txt; }
+      setBusy(false);
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let statusEl = null;
+
+    const handleEvent = async (name, data) => {
+      if (name === "chat_id") {
+        sessionId = data.session_id;
+        sessionEl.textContent = "session: " + sessionId;
+        try { localStorage.setItem("teff-session", sessionId); } catch (e) {}
+      } else if (name === "status") {
+        clearThinking(holder);
+        scrollBottom();
+        statusEl = addStatus(data.message);
+        scrollBottom();
+      } else if (name === "content") {
+        clearThinking(holder);
+        if (holder) holder.bubble.textContent += data.content || "";
+        scrollBottom();
+      } else if (name === "message") {
+        clearThinking(holder);
+        if (statusEl && statusEl.parentNode) statusEl.parentNode.removeChild(statusEl);
+        if (holder) {
+          holder.bubble.classList.remove("streaming");
+          holder.bubble.textContent = data.reply || "";
+        }
+        if (data.waiting) {
+          const r = row();
+          const s = document.createElement("div");
+          s.className = "sys";
+          s.textContent = "агент ждёт вашего ответа";
+          r.appendChild(s);
+          scrollBottom();
+        }
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.replace(/\r\n/g, "\n").split("\n\n");
+      buffer = parts.pop();
+      for (const part of parts) {
+        let event = "message", data = "";
+        for (const line of part.split("\n")) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data += line.slice(5).trim();
+        }
+        if (data) {
+          try { await handleEvent(event, JSON.parse(data)); }
+          catch (e) { console.error("event parse", e); }
+        }
+      }
+      scrollBottom();
+    }
+    setBusy(false);
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = input.value.trim();
+    if (!v || busy) return;
+    input.value = "";
+    input.style.height = "auto";
+    send(v);
+  });
+
+  const saved = readSession();
+  if (saved && saved.length === 32) sessionId = saved;
+  else newSession();
+  sessionEl.textContent = "session: " + (sessionId||"");
+  input.placeholder = hints[0];
+  let ph = 0;
+  setInterval(() => { ph = (ph + 1) % hints.length; if (!busy) input.placeholder = hints[ph]; }, 6000);
+})();
+</script>
+</body>
+</html>

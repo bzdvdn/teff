@@ -3,7 +3,11 @@
 Runs one turn against the chat-style SSE stream and asserts the event
 sequence matches the contract::
 
-    chat_id -> (status | content)* -> (waiting | message)
+    chat_id -> (status | content)* -> message
+
+where the terminal ``message`` carries ``waiting: true`` when the workflow
+paused asking the operator a question (its ``reply`` is that question) and
+``waiting: false`` with the full answer otherwise.
 
 Exits ``0`` when the stream looks correct, ``1`` otherwise, printing every
 event as it arrives.  Raw framework events (``run_start``, ``node_start``,
@@ -29,14 +33,13 @@ import sys
 
 import httpx
 
-TERMINAL = ("waiting", "message")
+TERMINAL = ("message",)
 CHAT_EVENTS = {"chat_id", "status", "content"}
 
 _DATA_KEYS = {
     "chat_id": {"session_id"},
     "status": {"session_id", "message"},
     "content": {"session_id", "content"},
-    "waiting": {"session_id", "question"},
     "message": {"session_id", "reply", "waiting"},
 }
 
@@ -57,6 +60,8 @@ def check_event(name: str, data: dict, raw: bool) -> None:
     missing = required - set(data)
     if missing:
         fail(f"{name}: missing keys {sorted(missing)}")
+    if name == "message" and not isinstance(data.get("waiting"), bool):
+        fail("message: `waiting` must be a boolean")
 
 
 def run(url: str, message: str, session: str, api_key: str, raw: bool) -> int:
@@ -125,7 +130,7 @@ def _summarise(events: list[tuple[str, dict]], raw: bool) -> int:
     types = [name for name, _ in events]
     terminal = types[-1]
     if terminal not in TERMINAL:
-        fail(f"stream must end with `message` or `waiting`, ended with `{terminal}`")
+        fail(f"stream must end with `message`, ended with `{terminal}`")
     if not raw:
         foreign = set(types) - CHAT_EVENTS - set(TERMINAL)
         if foreign:
@@ -134,14 +139,14 @@ def _summarise(events: list[tuple[str, dict]], raw: bool) -> int:
         print(f"\nFAIL: {len(_ERRORS)} problem(s)")
         return 1
     print(f"\nok: {len(events)} event(s): {' → '.join(types)}")
-    for name, data in events:
-        if name == "message":
-            print(f"reply: {data['reply']}")
-        elif name == "waiting":
-            print(
-                f"question: {data['question']}  "
-                f'(resume: --message "да" --session {data["session_id"]})'
-            )
+    name, data = events[-1]
+    if name == "message" and data.get("waiting"):
+        print(
+            f"question: {data['reply']}  "
+            f'(resume: --message "да" --session {data["session_id"]})'
+        )
+    elif name == "message":
+        print(f"reply: {data['reply']}")
     return 0
 
 

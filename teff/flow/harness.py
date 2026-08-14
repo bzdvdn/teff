@@ -30,6 +30,8 @@ class HarnessBuilder:
         input_key: str = "input",
         output_key: str = "output",
         messages_key: str = "messages",
+        reply_key: str = "reply_to_user",
+        done_key: str = "_react_done",
         memory=None,
         max_tool_rounds: int = 10,
         tool_error_mode: str = "message",
@@ -117,6 +119,8 @@ class HarnessBuilder:
             "input_key": input_key,
             "output_key": output_key,
             "messages_key": messages_key,
+            "reply_key": reply_key,
+            "done_key": done_key,
             "max_tool_rounds": max_tool_rounds,
             "parse_text_tool_calls": parse_text_tool_calls,
             "temperature": temperature,
@@ -156,6 +160,9 @@ class HarnessBuilder:
             use_tools=use_tools,
             skills=skills,
             skill_dir=skill_dir,
+            reply_key=reply_key,
+            output_key=output_key,
+            done_key=done_key,
             **config,
         )
 

@@ -34,7 +34,7 @@ WORKDIR /app
 # deps) from the index — it is not a `teff` dependency. Drop the wheel cache.
 COPY --from=build /wheels /wheels
 RUN pip install --no-index --find-links=/wheels 'teff[fastapi,queue]' \
-    && pip install pydantic-settings \
+    && pip install pydantic-settings python-multipart \
     && rm -rf /wheels
 
 # The application itself (src + the seed CSVs for the RAG catalog).

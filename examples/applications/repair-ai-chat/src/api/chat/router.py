@@ -1,9 +1,10 @@
 """Chat endpoints — single-shot reply and an SSE token stream.
 
 Handlers are thin: they read the :class:`~teff.assistant.Assistant` off
-``request.app.state`` and delegate one turn to it.  Sessions are scoped
-to a user id (``X-User-Id`` header) and durable across requests and process
-restarts.
+``request.app.state`` and delegate one turn to it.  Every chat session runs
+in its own owner namespace (the session id, or an ``X-User-Id`` header if
+given), is durable across requests and process restarts, and never shares
+state or traces with other sessions.
 
 Endpoints:
     POST   /api/chat/stream  chat-style SSE stream (see below)
@@ -14,19 +15,19 @@ framework events):
 * ``chat_id`` — the durable session id.
 * ``status`` — the coordinator picked a tool (e.g. ``Составляю смету…``).
 * ``content`` — streamed tokens when an agent streams them.
-* ``waiting`` — the workflow paused asking the operator a question; the
-  stream ends here, resume by posting the answer to the same session.  The
-  payload carries the question under ``question``.
-* ``message`` — the full assistant reply (``{"session_id", "reply",
-  "run_id", "waiting"}``), a client can render it without concatenating
-  ``content`` events.
+* ``message`` — the terminal event (``{"session_id", "reply", "run_id",
+  "waiting"}``), a client can render it without concatenating ``content``
+  events.  When the workflow paused asking the operator a question,
+  ``reply`` carries that question and ``waiting`` is ``True`` — resume by
+  posting the answer to the same session.  Otherwise ``reply`` is the full
+  assistant answer and ``waiting`` is ``False``.
 
 Human-in-the-loop: pause handling lives in the framework's
 :class:`~teff.assistant.Assistant`.  Its ``turn``/``stream`` methods detect a
 paused interrupt from the durable checkpoint and resume the run with the next
 message — so this endpoint never sees a ``GraphInterrupt`` or a ``pending``
-map.  It surfaces ``waiting`` and the question to the client and the
-operator's answer resumes the run in the same session.
+map.  It surfaces the question through the terminal ``message`` (``waiting``)
+and the operator's answer resumes the run in the same session.
 """
 
 from __future__ import annotations
@@ -39,7 +40,6 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from src.api.auth.router import require_api_key
-from teff.checkpoint import DEFAULT_OWNER
 from teff.observability import GraphObserver
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
@@ -54,9 +54,14 @@ class ChatRequest(BaseModel):
 
 
 def _session(req: ChatRequest, request: Request, x_user_id: str | None):
-    """The durable session assets plus the session id for one turn."""
-    owner = x_user_id or DEFAULT_OWNER
+    """The durable session assets plus the session id for one turn.
+
+    Each session runs in its own owner namespace: when no ``X-User-Id`` is
+    given, the owner is the session id itself, so sessions never share
+    durable state or traces.
+    """
     session_id = req.session_id or uuid.uuid4().hex
+    owner = x_user_id or session_id
     return request.app.state.assistant, owner, session_id
 
 
@@ -130,6 +135,7 @@ _TOOL_LABELS = {
     "prepare_estimate": "Составляю смету…",
     "run_qa_check": "Проверяю проект…",
     "ask_human": "Жду подтверждения…",
+    "reply_to_user": "Отвечаю…",
 }
 
 
@@ -145,6 +151,7 @@ async def chat_stream(
     async def events():
         yield {"event": "chat_id", "data": json.dumps({"session_id": session_id})}
         observer = _observer(request, owner, session_id)
+        question: str | None = None
         try:
             async for event in assistant.stream(
                 session_id,
@@ -154,17 +161,21 @@ async def chat_stream(
                 **_tracer_kwargs(observer),
             ):
                 if event.type == "interrupt":
-                    yield {
-                        "event": "waiting",
-                        "data": json.dumps(
-                            {
-                                "session_id": session_id,
-                                "question": event.data.get("question")
-                                or event.data.get("prompt", ""),
-                            }
-                        ),
-                    }
-                    return
+                    question = event.data.get("question") or event.data.get(
+                        "prompt", ""
+                    )
+                    if raw:
+                        data = {"session_id": session_id}
+                        if event.node_id is not None:
+                            data["node_id"] = event.node_id
+                        if event.node_type is not None:
+                            data["node_type"] = event.node_type
+                        data.update(event.data)
+                        yield {
+                            "event": event.type,
+                            "data": json.dumps(data),
+                        }
+                    break
                 if raw:
                     data = {"session_id": session_id}
                     if event.node_id is not None:
@@ -198,7 +209,11 @@ async def chat_stream(
                     }
         finally:
             run_id = _finish(observer)
-        reply = await assistant.last_reply(session_id, owner=owner)
+        if question is not None:
+            reply, waiting = question, True
+        else:
+            reply = await assistant.last_reply(session_id, owner=owner)
+            waiting = False
         yield {
             "event": "message",
             "data": json.dumps(
@@ -206,7 +221,7 @@ async def chat_stream(
                     "session_id": session_id,
                     "reply": reply,
                     "run_id": run_id,
-                    "waiting": False,
+                    "waiting": waiting,
                 }
             ),
         }

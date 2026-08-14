@@ -33,12 +33,14 @@ def detect_room_type(first_user_message: str) -> str | None:
 
 
 def room_from_first_user(state: dict) -> str | None:
-    """Fallback fn: detect the room from the first user message.
+    """Fallback fn: detect the room from the user messages.
 
     Runs only when the extractor ``LLM`` left ``project_info.room_type``
-    empty.  Returns the detected room, or ``None`` to skip.
+    empty.  Returns the first detected room, or ``None`` to skip.
     """
     for message in state.get("messages", []):
         if message.get("role") == "user" and message.get("content"):
-            return detect_room_type(str(message["content"]))
+            room = detect_room_type(str(message["content"]))
+            if room:
+                return room
     return None

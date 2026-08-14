@@ -184,6 +184,41 @@ class BaseBuilder:
                 )
         return self.step(node, id=id)
 
+    def contract(self, contract=None, id=None, **config):
+        """Add a :class:`~teff.node.contract.Contract` subflow.
+
+        Pass a pre-built ``Contract`` instance or keyword config that is
+        forwarded to the ``Contract`` constructor::
+
+            flow.contract(
+                system=FINAL_SYSTEM,
+                schema=RESPONSE_SCHEMA,
+                messages_key="messages",
+                output_key="answer_json",
+                normalize=normalize_final_response,
+                validate=is_valid_final_response,
+                fallback=lambda st: create_contract_fallback(st["query"]),
+            )
+
+        The contract is embedded as one :class:`~teff.flow.sub_flow.SubFlow`
+        node.  Passing both an instance and config kwargs raises
+        ``TypeError``.  *id* optionally names the node in the compiled graph.
+
+        Returns ``self`` for chaining.
+        """
+        from teff.node.contract import Contract
+
+        if contract is None:
+            contract = Contract(**config)
+        else:
+            if config:
+                raise TypeError(
+                    "contract() accepts either a Contract instance or config kwargs, not both"
+                )
+            if not isinstance(contract, Contract):
+                raise TypeError("contract() expects a Contract instance")
+        return self.step(contract.build(), id=id)
+
     def supervisor(self, node=None, id=None, **config):
         """Add a :class:`~teff.node.supervisor.Supervisor` decider node.
 

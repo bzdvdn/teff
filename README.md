@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://pypi.org/project/teff/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-_Durable AI workflows as data._
+_Your workflow is data — YAML or Python. Crash-proof. No engine to run._
 
 Every agent project has the same arc: one `for` loop of LLM calls feels fine,
 a second agent needs branching, a third needs retries and state — and soon
@@ -48,6 +48,21 @@ Teff is async-first: nodes, tools and LLM calls are `async`, and a run can be
 **checkpointed, inspected, paused, resumed and evaluated**. The flow is
 **data**, every run is **durable**, and nothing is a black box. Read the whole
 story in [**Why Teff**](docs/why-teff.md).
+
+**For** teams that build stateful agents but can't — or won't — hand their
+data to a cloud runtime: legal, medical, enterprise, self-hosters, anyone
+running local models.
+
+**Against** frameworks where durability is a hosted feature. Teff is a
+library — durability lives inside your own process: checkpoints are files,
+SQLite or PostgreSQL on your machine, and resume-from-failure is a property
+of the runtime, not a subscription. There is no orchestration server to
+deploy and no platform to ship your data to.
+
+**Proof:** the workflow is data — author it top-to-bottom as a Python `Flow`
+whose chaining reads like the story itself, a fraction of LangGraph's
+node-and-edge wiring, and the same graph exports to one versionable,
+diffable, reviewable YAML file. The graph IS the artifact.
 
 ## Why Teff?
 

@@ -4,6 +4,12 @@ from teff.node.agent import ReActAgent, ToolExec
 from teff.node.ask import Ask, Validate
 from teff.node.command import Command
 from teff.node.command_node import CommandNode
+from teff.node.contract import (
+    Contract,
+    ContractFallback,
+    ContractNormalize,
+    ContractValidate,
+)
 from teff.node.extract import Extract, Fallback
 
 if TYPE_CHECKING:
@@ -231,6 +237,31 @@ def _loop_factory(cfg: dict) -> Loop:
 
 default_registry.register("loop", _loop_factory)
 default_registry.register("subflow", _subflow_factory)
+
+
+def _contract_factory(cfg: dict) -> "SubFlow":
+    """Build a :class:`Contract` subflow from a declarative config mapping.
+
+    Registered as the ``contract`` node type so a structured-output recipe
+    can be expressed in YAML::
+
+        - id: final
+          type: contract
+          config:
+            system: "Ты формируешь ответ по контракту."
+            schema: {...}
+            messages_key: messages
+            output_key: answer_json
+
+    ``normalize`` / ``validate`` / ``fallback`` are callables and can only
+    be supplied programmatically (mirroring ``Ask.check`` / edge conditions).
+    """
+    from teff.node.contract import Contract
+
+    return Contract(**cfg).build()
+
+
+default_registry.register("contract", _contract_factory)
 __all__ = [
     "Node",
     "NodeRegistry",
@@ -255,6 +286,10 @@ __all__ = [
     "GraphInterrupt",
     "Ask",
     "Validate",
+    "Contract",
+    "ContractFallback",
+    "ContractNormalize",
+    "ContractValidate",
     "Extract",
     "Fallback",
     "Command",

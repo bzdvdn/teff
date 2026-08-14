@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from src.api.router import api_router
 from src.config.config import Settings, get_settings
 from src.core.deps import build_deps
@@ -52,6 +53,7 @@ def create_app(
         provider=settings.provider,
         services=services,
         catalog=catalog,
+        provider_base_url=settings.provider_base_url,
     )
     compiled = flow.compile()
     assistant = Assistant(
@@ -85,5 +87,11 @@ def create_app(
     app.state.traces_exporter = traces_exporter
     app.state.trace_topology = topology_from_graph(compiled)
     attach_dashboard(app, traces_exporter, prefix=settings.traces_prefix)
+
+    # Static web UI: a build-free chat page that talks to `/api/chat/stream`.
+    # Mounted last, so `/api/*` and the trace dashboard win.
+    _web = Path(__file__).resolve().parent / "web"
+    if _web.is_dir():
+        app.mount("/", StaticFiles(directory=str(_web), html=True), name="web")
 
     return app

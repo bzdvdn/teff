@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     provider: str = "ollama"
     model: str = "llama3.1:8b"
 
+    #: Optional base URL override for the chat provider (e.g. the compose
+    #: demo points the app at ``http://ollama:11434``).  ``None`` keeps the
+    #: preset default (``http://localhost:11434`` for Ollama).
+    provider_base_url: str | None = None
+
     #: When set, the chat/run routers require the ``X-API-Key`` header.
     api_key: str | None = None
 

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from teff.flow.case import Case
     from teff.node.ask import Ask
     from teff.node.context import AppendAssistant, ContextBuilder
+    from teff.node.contract import Contract
     from teff.node.harness import ReActAgent
     from teff.node.supervisor import Supervisor
     from teff.provider import ProviderRegistry
@@ -220,6 +221,16 @@ class Flow:
         """Add a :class:`~teff.node.supervisor.Supervisor` decider node.  See
         :meth:`teff.flow.base.BaseBuilder.supervisor`."""
         return self._base.supervisor(node, id=id, **config)
+
+    def contract(
+        self,
+        contract: "Contract | None" = None,
+        id: str | None = None,
+        **config,
+    ) -> "Flow":
+        """Add a :class:`~teff.node.contract.Contract` subflow.  See
+        :meth:`teff.flow.base.BaseBuilder.contract`."""
+        return self._base.contract(contract, id=id, **config)
 
     def team(
         self,

@@ -1,0 +1,34 @@
+# Optional all-in-one bundle: run the app WITH a containerised Ollama.
+# Use this when you DON'T have a host Ollama. Needs several GB of RAM.
+#
+#     docker compose -f docker-compose.yml -f compose.ollama.yml up --build
+#
+# Overrides the app's provider URL to reach the `ollama` service and adds
+# the Ollama container + health-gated startup.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  app:
+    environment:
+      TEFF_PROVIDER: ollama
+      TEFF_PROVIDER_BASE_URL: http://ollama:11434
+    extra_hosts: []
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  ollama:
+  appdata:
